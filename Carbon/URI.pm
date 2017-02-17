@@ -5,7 +5,7 @@ use warnings;
 use feature 'say';
 
 
-sub new ($$) {
+sub new {
 	my ($class) = @_;
 	my $self = bless {}, $class;
 
@@ -30,6 +30,25 @@ sub parse {
 	$self->fragment($6);
 
 	return $self
+}
+
+sub clone {
+	my ($self, $other) = @_;
+	my $class = 'Carbon::URI';
+	if (defined $other) {
+		$class = $self;
+		$self = $other;
+	}
+	
+	my $clone = $class->new;
+	$clone->protocol($self->protocol);
+	$clone->host($self->host);
+	$clone->port($self->port);
+	$clone->path($self->path);
+	$clone->query($self->query);
+	$clone->fragment($self->fragment);
+
+	return $clone
 }
 
 sub protocol { @_ > 1 ? $_[0]{protocol} = $_[1] : $_[0]{protocol} }

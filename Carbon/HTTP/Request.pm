@@ -1,5 +1,5 @@
 package Carbon::HTTP::Request;
-use parent 'Carbon::Message';
+use parent 'Carbon::HTTP::Message';
 use strict;
 use warnings;
 

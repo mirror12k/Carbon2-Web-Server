@@ -1,4 +1,4 @@
-package Carbon::Message;
+package Carbon::HTTP::Message;
 use strict;
 use warnings;
 
