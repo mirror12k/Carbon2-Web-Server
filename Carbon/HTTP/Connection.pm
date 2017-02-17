@@ -8,6 +8,8 @@ use feature 'say';
 use Carbon::HTTP::Request;
 use Carbon::URI;
 
+use Data::Dumper;
+
 
 
 sub new {
@@ -72,6 +74,12 @@ sub parse_http_header {
 	}
 
 	return $req
+}
+
+sub response {
+	my ($self, $res) = @_;
+	# say "got result: ", Dumper $res;
+	$self->{socket}->print($res->as_string);
 }
 
 sub format_gpc {

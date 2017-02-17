@@ -39,8 +39,8 @@ sub new ($%) {
 	
 	$self->port($args{port} // 2048);
 	$self->routers($args{routers} // {});
-	$self->connection_processing_workers($args{connection_processing_workers} // 10);
-	$self->request_processing_workers($args{request_processing_workers} // 10);
+	$self->connection_processing_workers($args{connection_processing_workers} // 2);
+	$self->request_processing_workers($args{request_processing_workers} // 2);
 
 	$self->server_running(0);
 
@@ -106,7 +106,7 @@ sub start_thread_pool {
 		workers => $self->connection_processing_workers,
 		pre => sub {
 			eval { $self->start_connection_thread($self->server_socket_queue); };
-			$self->warn("connection thread died of $@") if $@;
+			$self->warn(1, "connection thread died of $@") if $@;
 		},
 		do => sub { say 'lol nope' },
 	}));
@@ -170,10 +170,16 @@ sub start_connection_thread {
 	$self->warn(1, "debug start_connection_thread");
 	$self->processing_thread_pool(Thread::Pool->new({
 		workers => $self->request_processing_workers,
-		pre => sub { $self->init_processing_thread(@_) },
+		pre => sub {
+			eval { $self->init_processing_thread(@_) };
+			$self->warn(1, "process thread died during initialization: $@") if $@;
+		},
 		do => sub {
-			eval { return $self->process_gpc(@_) };
-			$self->warn("process thread died of $@") if $@;
+			my @ret = eval { $self->process_gpc(@_) };
+			$self->warn(1, "process thread died: $@") if $@;
+			$self->warn(1, "returning result: @ret");
+
+			return @ret
 		},
 	}));
 
@@ -191,8 +197,29 @@ sub start_connection_thread {
 			$connection->read_buffered;
 			while (my $gpc = $connection->produce_gpc) {
 				# say "got gpc from connection: ", Dumper $gpc;
-				$self->processing_thread_pool->job($gpc);
+				$gpc->{socket} = "$socket";
+				# we must read the jobid, otherwise Thread::Pool will think that we don't want the results
+				my $jobid = $self->processing_thread_pool->job($gpc);
 			}
+		}
+
+		my @jobids = $self->processing_thread_pool->results;
+		# say "debug jobs: @jobids vs " . $self->processing_thread_pool->todo;
+		foreach my $jobid ($self->processing_thread_pool->results) {
+			$self->warn(1, "got result from job $jobid");
+			my ($socket, $result) = $self->processing_thread_pool->result($jobid);
+			# reclaim any socket whose job has completed
+			# say "job [$jobid] completed!"; # JOBS DEBUG
+			$self->warn(1, "got result from job $jobid for socket $socket");
+			my $connection = $socket_connections{"$socket"};
+			$connection->response($result);
+			# if ($self->processing_thread_pool->result($jobid)) {
+			# 	# re-add it to the selector if the job completed with true status
+			# 	$self->socket_selector->add($sock);
+			# } else {
+			# 	# if job returned with false status, we must close the socket and delete record of it
+			# 	$self->delete_socket($sock);
+			# }
 		}
 
 		while (my $socket = $queue->dequeue_nb()) {
@@ -206,8 +233,11 @@ sub start_connection_thread {
 
 sub init_processing_thread {
 	my ($self) = @_;
-	for my $router (keys %{$self->routers}) {
-		# $self->warn(1, "initializing router [" . $router . "] in processing thread");
+	my %initialized_routers;
+	for my $router (values %{$self->routers}) {
+		$self->warn(1, "initializing router [" . $router . "] in processing thread");
+		$router->init_thread unless exists $initialized_routers{"$router"};
+		$initialized_routers{"$router"} = 1;
 	}
 }
 
@@ -218,11 +248,10 @@ sub process_gpc {
 
 	if (exists $self->routers->{$uri->protocol}) {
 		$self->warn(1, "processing gpc '" . $uri->as_string . "' with router [" . $self->routers->{$uri->protocol} . "]");
-		# say "processing with router: ", $self->routers->{$uri->protocol};
-		return 1
+		return $gpc->{socket}, $self->routers->{$uri->protocol}->route($gpc)
 	} else {
 		$self->warn(1, "no router found for protocol '" . $uri->protocol . "'");
-		return 0
+		return
 	}
 }
 
