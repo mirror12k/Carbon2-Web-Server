@@ -76,10 +76,9 @@ sub parse_http_header {
 	return $req
 }
 
-sub response {
-	my ($self, $res) = @_;
-	# say "got result: ", Dumper $res;
-	$self->{socket}->print($res->as_string);
+sub result {
+	my ($self, $response) = @_;
+	$self->{socket}->print($response->as_string);
 }
 
 sub format_gpc {

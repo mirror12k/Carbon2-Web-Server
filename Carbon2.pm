@@ -74,7 +74,7 @@ sub request_processing_workers { @_ > 1 ? $_[0]{carbon_server__request_processin
 sub warn {
 	my ($self, $level, @args) = @_;
 	if ($self->{debug} and $self->{debug} <= $level) {
-		$self->onwarn->("[$self][". (caller)[0] ."] ", @args, "\n");
+		$self->onwarn->("[". (caller)[0] ."][$self] ", @args, "\n");
 	}
 }
 
@@ -96,6 +96,17 @@ sub start {
 	$self->listen_accept_server_loop;
 
 	$self->cleanup;
+}
+
+sub shutdown {
+	my ($self) = @_;
+
+	if ($self->server_running) {
+		$self->warn(1, "shutdown requested");
+		$self->server_running(0);
+	} else {
+		$self->die("shutdown called twice");
+	}
 }
 
 sub start_thread_pool {
@@ -139,17 +150,10 @@ sub listen_accept_server_loop {
 		foreach my $socket ($self->socket_selector->can_read(500 / 1000)) {
 			my $new_socket = $socket->accept;
 			$new_socket->blocking(0); # set it to non-blocking
-			$self->warn(1, "debug got connection $new_socket");
+			$self->warn(1, "got connection $new_socket");
 			$self->server_socket_queue->enqueue(fileno $new_socket);
 			push @socket_cache, $new_socket;
 		}
-		# # update the thread_pool to receive any completed jobs
-		# $self->update_thread_pool;
-		# # update the server socket to receive any new connections
-		# $self->accept_new_connections;
-		# # update sockets to receive any new messages and dispatch any jobs necessary
-		# # this method needs to perform some delay operation to prevent 100% cpu usage
-		# $self->update_sockets;
 	}
 
 }
@@ -159,6 +163,7 @@ sub cleanup {
 	my ($self) = @_;
 	say "cleaning up...";
 
+	$self->server_socket_queue->end;
 	$self->connection_thread_pool->shutdown;
 }
 
@@ -167,7 +172,7 @@ sub cleanup {
 sub start_connection_thread {
 	my ($self, $queue) = @_;
 
-	$self->warn(1, "debug start_connection_thread");
+	$self->warn(1, "start_connection_thread");
 	$self->processing_thread_pool(Thread::Pool->new({
 		workers => $self->request_processing_workers,
 		pre => sub {
@@ -177,8 +182,6 @@ sub start_connection_thread {
 		do => sub {
 			my @ret = eval { $self->process_gpc(@_) };
 			$self->warn(1, "process thread died: $@") if $@;
-			$self->warn(1, "returning result: @ret");
-
 			return @ret
 		},
 	}));
@@ -190,41 +193,42 @@ sub start_connection_thread {
 
 	while ($self->server_running) {
 		# $self->warn(1, "debug in server loop");
-		usleep (50 * 1000) unless $selector->count;
 
-		foreach my $socket ($selector->can_read(50 / 1000)) {
-			my $connection = $socket_connections{"$socket"};
-			$connection->read_buffered;
-			while (my $gpc = $connection->produce_gpc) {
-				# say "got gpc from connection: ", Dumper $gpc;
-				$gpc->{socket} = "$socket";
-				# we must read the jobid, otherwise Thread::Pool will think that we don't want the results
-				my $jobid = $self->processing_thread_pool->job($gpc);
+		if (not defined $queue->pending) {
+			$self->server_running(0);
+		} elsif ($selector->count) {
+			foreach my $socket ($selector->can_read(10 / 1000)) {
+				my $connection = $socket_connections{"$socket"};
+				$connection->read_buffered;
+				while (my $gpc = $connection->produce_gpc) {
+					# say "got gpc from connection: ", Dumper $gpc;
+					$gpc->{socket} = "$socket";
+					# we must read the jobid, otherwise Thread::Pool will think that we don't want the results
+					my $jobid = $self->processing_thread_pool->job($gpc);
+				}
 			}
-		}
 
-		my @jobids = $self->processing_thread_pool->results;
-		# say "debug jobs: @jobids vs " . $self->processing_thread_pool->todo;
-		foreach my $jobid ($self->processing_thread_pool->results) {
-			$self->warn(1, "got result from job $jobid");
-			my ($socket, $result) = $self->processing_thread_pool->result($jobid);
-			# reclaim any socket whose job has completed
-			# say "job [$jobid] completed!"; # JOBS DEBUG
-			$self->warn(1, "got result from job $jobid for socket $socket");
-			my $connection = $socket_connections{"$socket"};
-			$connection->response($result);
-			# if ($self->processing_thread_pool->result($jobid)) {
-			# 	# re-add it to the selector if the job completed with true status
-			# 	$self->socket_selector->add($sock);
-			# } else {
-			# 	# if job returned with false status, we must close the socket and delete record of it
-			# 	$self->delete_socket($sock);
-			# }
-		}
+			my @jobids = $self->processing_thread_pool->results;
+			foreach my $jobid ($self->processing_thread_pool->results) {
+				my ($socket, @results) = $self->processing_thread_pool->result($jobid);
+				# reclaim any socket whose job has completed
+				# say "job [$jobid] completed!"; # JOBS DEBUG
+				# $self->warn(1, "got result from job $jobid for socket $socket");
+				my $connection = $socket_connections{"$socket"};
+				# TODO: close connection if results are empty
+				$connection->result(@results);
+			}
 
-		while (my $socket = $queue->dequeue_nb()) {
-			$socket_connections{"$socket"} = Carbon::HTTP::Connection->new($socket);
-			$selector->add($socket);
+			while (my $socket = $queue->dequeue_nb()) {
+				$socket_connections{"$socket"} = Carbon::HTTP::Connection->new($socket);
+				$selector->add($socket);
+			}
+		} else {
+			my $socket = $queue->dequeue();
+			if (defined $socket) {
+				$socket_connections{"$socket"} = Carbon::HTTP::Connection->new($socket);
+				$selector->add($socket);
+			}
 		}
 	}
 

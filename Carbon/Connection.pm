@@ -31,8 +31,12 @@ sub read_buffered {
 
 sub produce_gpc {
 	my ($self) = @_;
+	die "unimplemented ->produce_gpc in $self";
+}
 
-	die "unimplemented produce_gpc in $self";
+sub result {
+	my ($self) = @_;
+	die "unimplemented ->result in $self";
 }
 
 sub close {
