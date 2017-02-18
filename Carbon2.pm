@@ -74,13 +74,13 @@ sub request_processing_workers { @_ > 1 ? $_[0]{carbon_server__request_processin
 sub warn {
 	my ($self, $level, @args) = @_;
 	if ($self->{debug} and $self->{debug} <= $level) {
-		$self->onwarn->("[". (caller)[0] ."][$self] ", @args, "\n");
+		$self->onwarn->("[". (caller)[0] ."] ", @args, "\n");
 	}
 }
 
 sub die {
 	my ($self, @args) = @_;
-	$self->onerror->("[$self] ", @args);
+	$self->onerror->("[". (caller)[0] ."][$self] ", @args);
 	CORE::die "returning from onerror is not allowed";
 }
 
@@ -252,7 +252,7 @@ sub process_gpc {
 
 	if (exists $self->routers->{$uri->protocol}) {
 		$self->warn(1, "processing gpc '" . $uri->as_string . "' with router [" . $self->routers->{$uri->protocol} . "]");
-		return $gpc->{socket}, $self->routers->{$uri->protocol}->route($gpc)
+		return $gpc->{socket}, $self->routers->{$uri->protocol}->execute_gpc($gpc)
 	} else {
 		$self->warn(1, "no router found for protocol '" . $uri->protocol . "'");
 		return

@@ -13,9 +13,9 @@ sub new {
 	return $self
 }
 
-sub route {
+sub execute_gpc {
 	my ($self, $gpc) = @_;
-	die "unimplemented ->route callback in $self"
+	die "unimplemented ->execute_gpc callback in $self"
 }
 
 # optional callback called upon a new processing thread starting

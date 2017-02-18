@@ -13,7 +13,7 @@ use Data::Dumper;
 
 sub protocol { qw/ http: https: / }
 
-sub route {
+sub execute_gpc {
 	my ($self, $gpc) = @_;
 	# say "got gpc ", Dumper $gpc;
 
