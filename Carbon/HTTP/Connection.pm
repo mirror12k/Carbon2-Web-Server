@@ -12,13 +12,6 @@ use Data::Dumper;
 
 
 
-sub new {
-	my ($class, $fd) = @_;
-	my $socket = IO::Socket::INET->new;
-	$socket->fdopen($fd, 'r+'); # 'rw' stalls
-	return $class->SUPER::new($socket)
-}
-
 sub produce_gpc {
 	my ($self) = @_;
 

@@ -22,6 +22,13 @@ sub start_sockets {
 	return $self->{server_socket}
 }
 
+sub restore_socket {
+	my ($self, $fd) = @_;
+	my $socket = IO::Socket::INET->new;
+	$socket->fdopen($fd, 'r+'); # 'rw' stalls
+	return $socket
+}
+
 # returns a connection object spawned from the given socket
 sub start_connection {
 	my ($self, $socket) = @_;

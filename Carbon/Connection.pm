@@ -18,15 +18,17 @@ sub new {
 sub read_buffered {
 	my ($self) = @_;
 
-	$self->{socket}->read($self->{buffer}, 4096 * 64, length $self->{buffer});
-	my $read = 1;
-	my $total = 0;
+	my $read = $self->{socket}->read($self->{buffer}, 4096 * 64, length $self->{buffer});
+	my $total = $read // 0;
 	while (defined $read and $read > 0) {
 		$read = $self->{socket}->read($self->{buffer}, 4096 * 16, length $self->{buffer});
 		$total += $read if defined $read;
-		# say "debug read loop: $read";
+		# say "error: $!" unless defined $read;
+		# say "debug read loop: $read" if defined $read;
 	}
+	# say "read: $total";
 	# $self->delete_socket($fh) if $total == 0;
+	return $total == 0
 }
 
 sub produce_gpc {

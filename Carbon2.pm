@@ -198,12 +198,18 @@ sub start_connection_thread {
 		} elsif ($selector->count) {
 			foreach my $socket ($selector->can_read(10 / 1000)) {
 				my $connection = $socket_connections{"$socket"};
-				$connection->read_buffered;
-				while (my $gpc = $connection->produce_gpc) {
-					# say "got gpc from connection: ", Dumper $gpc;
-					$gpc->{socket} = "$socket";
-					# we must read the jobid, otherwise Thread::Pool will think that we don't want the results
-					my $jobid = $self->processing_thread_pool->job($gpc);
+				my $status = $connection->read_buffered;
+				if ($status) {
+					$self->warn(1, "force closing $socket due to bad status");
+					close $socket;
+					$selector->remove($socket);
+				} else {
+					while (my $gpc = $connection->produce_gpc) {
+						# say "got gpc from connection: ", Dumper $gpc;
+						$gpc->{socket} = "$socket";
+						# we must read the jobid, otherwise Thread::Pool will think that we don't want the results
+						my $jobid = $self->processing_thread_pool->job($gpc);
+					}
 				}
 			}
 
@@ -220,7 +226,11 @@ sub start_connection_thread {
 
 			while (my $instruction = $queue->dequeue_nb()) {
 				my ($parent_socket, $socket) = @$instruction;
-				my $connection = $self->receiver_map->{$parent_socket}->start_connection($socket);
+				my $receiver = $self->receiver_map->{$parent_socket};
+
+				$socket = $receiver->restore_socket($socket);
+				my $connection = $receiver->start_connection($socket);
+
 				$socket_connections{"$socket"} = $connection;
 				$selector->add($socket);
 			}
@@ -228,7 +238,11 @@ sub start_connection_thread {
 			my $instruction = $queue->dequeue();
 			if (defined $instruction) {
 				my ($parent_socket, $socket) = @$instruction;
-				my $connection = $self->receiver_map->{$parent_socket}->start_connection($socket);
+				my $receiver = $self->receiver_map->{$parent_socket};
+
+				$socket = $receiver->restore_socket($socket);
+				my $connection = $receiver->start_connection($socket);
+
 				$socket_connections{"$socket"} = $connection;
 				$selector->add($socket);
 			}

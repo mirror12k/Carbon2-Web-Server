@@ -24,6 +24,12 @@ sub start_sockets {
 	die "unimplemented ->start_sockets in $self";
 }
 
+# restore a socket from file descriptor after it has been passed through a thread conveyer
+sub restore_socket {
+	my ($self, $fd) = @_;
+	die "unimplemented ->restore_socket in $self";
+}
+
 # returns a connection object spawned from the given socket
 sub start_connection {
 	my ($self, $socket) = @_;
