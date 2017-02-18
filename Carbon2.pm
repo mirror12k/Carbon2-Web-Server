@@ -7,14 +7,12 @@ use feature 'say';
 
 use Carp;
 
-use IO::Socket::INET;
 use IO::Select;
 use Thread::Pool;
 use Thread::Queue;
 use Time::HiRes 'usleep';
 
 use Carbon::URI;
-use Carbon::HTTP::Connection;
 
 use Data::Dumper;
 
@@ -37,11 +35,12 @@ sub new ($%) {
 	$self->onwarn($args{onwarn} // \&CORE::warn);
 	$self->onerror($args{onerror} // \&Carp::confess);
 	
-	$self->port($args{port} // 2048);
+	$self->receivers($args{receivers} // []);
 	$self->processors($args{processors} // {});
 	$self->connection_processing_workers($args{connection_processing_workers} // 2);
 	$self->request_processing_workers($args{request_processing_workers} // 2);
 
+	$self->receiver_map({});
 	$self->server_running(0);
 
 	return $self
@@ -55,13 +54,13 @@ sub onerror { @_ > 1 ? $_[0]{carbon_server__onerror} = $_[1] : $_[0]{carbon_serv
 
 sub server_running { @_ > 1 ? $_[0]{carbon_server__running} = $_[1] : $_[0]{carbon_server__running} }
 
-sub port { @_ > 1 ? $_[0]{carbon_server__port} = $_[1] : $_[0]{carbon_server__port} }
-sub server_socket { @_ > 1 ? $_[0]{carbon_server__server_socket} = $_[1] : $_[0]{carbon_server__server_socket} }
 sub socket_selector { @_ > 1 ? $_[0]{carbon_server__socket_selector} = $_[1] : $_[0]{carbon_server__socket_selector} }
 sub server_socket_queue { @_ > 1 ? $_[0]{carbon_server__server_socket_queue} = $_[1] : $_[0]{carbon_server__server_socket_queue} }
 sub connection_thread_pool { @_ > 1 ? $_[0]{carbon_server__connection_thread_pool} = $_[1] : $_[0]{carbon_server__connection_thread_pool} }
 sub processing_thread_pool { @_ > 1 ? $_[0]{carbon_server__processing_thread_pool} = $_[1] : $_[0]{carbon_server__processing_thread_pool} }
 
+sub receivers { @_ > 1 ? $_[0]{carbon_server__receivers} = $_[1] : $_[0]{carbon_server__receivers} }
+sub receiver_map { @_ > 1 ? $_[0]{carbon_server__receiver_map} = $_[1] : $_[0]{carbon_server__receiver_map} }
 sub processors { @_ > 1 ? $_[0]{carbon_server__processors} = $_[1] : $_[0]{carbon_server__processors} }
 sub connection_processing_workers { @_ > 1 ? $_[0]{carbon_server__connection_processing_workers} = $_[1] : $_[0]{carbon_server__connection_processing_workers} }
 sub request_processing_workers { @_ > 1 ? $_[0]{carbon_server__request_processing_workers} = $_[1] : $_[0]{carbon_server__request_processing_workers} }
@@ -88,10 +87,9 @@ sub die {
 sub start {
 	my ($self) = @_;
 
+	$self->start_server_sockets;
 	$self->start_thread_pool;
-	$self->start_server_socket;
 
-	$self->warn(1, "started carbon server on port ". $self->port);
 	$self->server_running(1);
 	$self->listen_accept_server_loop;
 
@@ -123,21 +121,18 @@ sub start_thread_pool {
 	}));
 }
 
-sub start_server_socket {
+sub start_server_sockets {
 	my ($self) = @_;
 
-	# the primary server socket which will be receiving connections
-	my $sock = IO::Socket::INET->new(
-		Proto => 'tcp',
-		LocalPort => $self->port,
-		Listen => SOMAXCONN,
-		Reuse => 1,
-		Blocking => 0,
-	) or $self->die("failed to start socket: $!");
-	$self->server_socket($sock);
-
 	$self->socket_selector(IO::Select->new);
-	$self->socket_selector->add($self->server_socket);
+
+	for my $receiver (@{$self->receivers}) {
+		my @sockets = $receiver->start_sockets;
+		for my $socket (@sockets) {
+			$self->socket_selector->add($socket);
+			$self->receiver_map->{"$socket"} = $receiver;
+		}
+	}
 }
 
 sub listen_accept_server_loop {
@@ -149,9 +144,9 @@ sub listen_accept_server_loop {
 		# say "in loop";
 		foreach my $socket ($self->socket_selector->can_read(500 / 1000)) {
 			my $new_socket = $socket->accept;
-			$new_socket->blocking(0); # set it to non-blocking
 			$self->warn(1, "got connection $new_socket");
-			$self->server_socket_queue->enqueue(fileno $new_socket);
+			$new_socket->blocking(0); # set it to non-blocking
+			$self->server_socket_queue->enqueue([ "$socket", fileno $new_socket ]);
 			push @socket_cache, $new_socket;
 		}
 	}
@@ -162,6 +157,10 @@ sub listen_accept_server_loop {
 sub cleanup {
 	my ($self) = @_;
 	$self->warn(1, "cleaning up...");
+
+	for my $receiver (@{$self->receivers}) {
+		$receiver->shutdown;
+	}
 
 	$self->server_socket_queue->end;
 	$self->connection_thread_pool->shutdown;
@@ -219,14 +218,18 @@ sub start_connection_thread {
 				$connection->result(@results);
 			}
 
-			while (my $socket = $queue->dequeue_nb()) {
-				$socket_connections{"$socket"} = Carbon::HTTP::Connection->new($socket);
+			while (my $instruction = $queue->dequeue_nb()) {
+				my ($parent_socket, $socket) = @$instruction;
+				my $connection = $self->receiver_map->{$parent_socket}->start_connection($socket);
+				$socket_connections{"$socket"} = $connection;
 				$selector->add($socket);
 			}
 		} else {
-			my $socket = $queue->dequeue();
-			if (defined $socket) {
-				$socket_connections{"$socket"} = Carbon::HTTP::Connection->new($socket);
+			my $instruction = $queue->dequeue();
+			if (defined $instruction) {
+				my ($parent_socket, $socket) = @$instruction;
+				my $connection = $self->receiver_map->{$parent_socket}->start_connection($socket);
+				$socket_connections{"$socket"} = $connection;
 				$selector->add($socket);
 			}
 		}
