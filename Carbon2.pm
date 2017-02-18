@@ -161,7 +161,7 @@ sub listen_accept_server_loop {
 
 sub cleanup {
 	my ($self) = @_;
-	say "cleaning up...";
+	$self->warn(1, "cleaning up...");
 
 	$self->server_socket_queue->end;
 	$self->connection_thread_pool->shutdown;

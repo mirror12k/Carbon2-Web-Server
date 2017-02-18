@@ -76,7 +76,6 @@ my $svr = Carbon2->new(
 );
 
 $SIG{INT} = sub {
-	say "shutting down...";
 	$svr->shutdown;
 };
 
