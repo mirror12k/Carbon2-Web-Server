@@ -12,7 +12,7 @@ use Carbon::HTTP::Response;
 
 
 sub route_directory {
-	my ($self, $path, $directory, $opts) = @_;
+	my ($self, $path, $directory, %opts) = @_;
 	
 	return $self->route(qr/$path.*/ => sub {
 		my ($self, $req, $res) = @_;
@@ -26,7 +26,7 @@ sub route_directory {
 		if (-e $loc) { # if the location exists
 			if (-f _) { # if it's a file
 				$res = $self->load_static_file($loc);
-			} elsif (-d _ and not $opts->{forbid_directories}) { # if it's a directory
+			} elsif (-d _ and not $opts{forbid_directories}) { # if it's a directory
 				# say "debug: $opts->{forbid_directories}";
 				$res = $self->load_directory_list($loc, $req->uri->path);
 			} else {
@@ -45,7 +45,7 @@ sub route_directory {
 		}
 
 		return $res
-	}, $opts);
+	}, %opts);
 }
 
 

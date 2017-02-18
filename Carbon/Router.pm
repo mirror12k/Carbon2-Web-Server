@@ -23,14 +23,13 @@ sub new {
 }
 
 sub route {
-	my ($self, $path, $callback, $opts) = @_;
-	$opts //= {};
+	my ($self, $path, $callback, %opts) = @_;
 
 	$callback = ref $callback eq 'ARRAY' ? [ @$callback ] : [ $callback ];
 	$path = quotemeta $path unless ref $path eq 'Regexp';
 	$path = qr/\A$path\Z/;
 
-	my $route = { regex => $path, callbacks => $callback, options => $opts };
+	my $route = { regex => $path, callbacks => $callback, options => { %opts } };
 	push @{$self->{routes}}, $route;
 
 	# $self->warn($CARBON_FIBER_DEBUG_VALUE, "added route for path $path");
@@ -39,10 +38,10 @@ sub route {
 }
 
 sub default_route {
-	my ($self, $callback, $opts) = @_;
+	my ($self, $callback, %opts) = @_;
 
 	$callback = ref $callback eq 'ARRAY' ? [ @$callback ] : [ $callback ];
-	$self->{default_route} = { callbacks => $callback, options => $opts };
+	$self->{default_route} = { callbacks => $callback, options => { %opts } };
 
 	return $self
 }
