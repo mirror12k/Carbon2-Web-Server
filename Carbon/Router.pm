@@ -30,7 +30,7 @@ sub route {
 	$path = quotemeta $path unless ref $path eq 'Regexp';
 	$path = qr/\A$path\Z/;
 
-	my $route = { regex => $path, functions => $callback, options => $opts };
+	my $route = { regex => $path, callbacks => $callback, options => $opts };
 	push @{$self->{routes}}, $route;
 
 	# $self->warn($CARBON_FIBER_DEBUG_VALUE, "added route for path $path");
@@ -42,7 +42,7 @@ sub default_route {
 	my ($self, $callback, $opts) = @_;
 
 	$callback = ref $callback eq 'ARRAY' ? [ @$callback ] : [ $callback ];
-	$self->{default_route} = { functions => $callback, options => $opts };
+	$self->{default_route} = { callbacks => $callback, options => $opts };
 
 	return $self
 }
@@ -56,11 +56,19 @@ sub execute_gpc {
 
 	for my $route (@{$self->{routes}}) {
 		if ($uri->path =~ $route->{regex}) {
-			@results = $_->($self, $req, @results) for @{$route->{functions}};
+			for my $callback (@{$route->{callbacks}}) {
+				if (ref $callback eq 'CODE') {
+					@results = $callback->($self, $req, @results);
+				} else {
+					@results = $callback->execute_gpc($gpc);
+				}
+			}
 		}
 	}
 	unless (@results) {
-		@results = $_->($self, $req, @results) for @{$self->{default_route}{functions}};
+		for my $callback (@{$self->{default_route}{callbacks}}) {
+			@results = $callback->($self, $req, @results);
+		}
 	}
 
 	return @results
