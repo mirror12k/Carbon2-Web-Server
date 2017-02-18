@@ -56,13 +56,11 @@ $rtr->route( qr!/post! => sub {
 	return $res
 });
 
-
-$rtr->route( qr!.*! => sub { # default path
+# default path
+$rtr->default_route(sub {
 	my ($rtr, $req, $res) = @_;
 
-	# do nothing if a response has already been generated
-	return $res if defined $res;
-	# otherwise we make a 404 response
+	# make a custom 404 response
 	$res = Carbon::HTTP::Response->new('404');
 	$res->content('THIS IS NOT A VALID PATH!');
 	$res->header('content-length' => length $res->content);
@@ -72,7 +70,7 @@ $rtr->route( qr!.*! => sub { # default path
 
 my $svr = Carbon2->new(
 	debug => 1,
-	routers => {
+	processors => {
 		'http:' => $rtr,
 	},
 );

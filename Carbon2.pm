@@ -38,7 +38,7 @@ sub new ($%) {
 	$self->onerror($args{onerror} // \&Carp::confess);
 	
 	$self->port($args{port} // 2048);
-	$self->routers($args{routers} // {});
+	$self->processors($args{processors} // {});
 	$self->connection_processing_workers($args{connection_processing_workers} // 2);
 	$self->request_processing_workers($args{request_processing_workers} // 2);
 
@@ -62,7 +62,7 @@ sub server_socket_queue { @_ > 1 ? $_[0]{carbon_server__server_socket_queue} = $
 sub connection_thread_pool { @_ > 1 ? $_[0]{carbon_server__connection_thread_pool} = $_[1] : $_[0]{carbon_server__connection_thread_pool} }
 sub processing_thread_pool { @_ > 1 ? $_[0]{carbon_server__processing_thread_pool} = $_[1] : $_[0]{carbon_server__processing_thread_pool} }
 
-sub routers { @_ > 1 ? $_[0]{carbon_server__routers} = $_[1] : $_[0]{carbon_server__routers} }
+sub processors { @_ > 1 ? $_[0]{carbon_server__processors} = $_[1] : $_[0]{carbon_server__processors} }
 sub connection_processing_workers { @_ > 1 ? $_[0]{carbon_server__connection_processing_workers} = $_[1] : $_[0]{carbon_server__connection_processing_workers} }
 sub request_processing_workers { @_ > 1 ? $_[0]{carbon_server__request_processing_workers} = $_[1] : $_[0]{carbon_server__request_processing_workers} }
 
@@ -237,11 +237,11 @@ sub start_connection_thread {
 
 sub init_processing_thread {
 	my ($self) = @_;
-	my %initialized_routers;
-	for my $router (values %{$self->routers}) {
-		$self->warn(1, "initializing router [" . $router . "] in processing thread");
-		$router->init_thread unless exists $initialized_routers{"$router"};
-		$initialized_routers{"$router"} = 1;
+	my %initialized_processors;
+	for my $processor (values %{$self->processors}) {
+		$self->warn(1, "initializing processor [" . $processor . "]");
+		$processor->init_thread unless exists $initialized_processors{"$processor"};
+		$initialized_processors{"$processor"} = 1;
 	}
 }
 
@@ -250,9 +250,9 @@ sub process_gpc {
 	# say "got gpc in process: ", Dumper $gpc;
 	my $uri = $gpc->{uri};
 
-	if (exists $self->routers->{$uri->protocol}) {
-		$self->warn(1, "processing gpc '" . $uri->as_string . "' with router [" . $self->routers->{$uri->protocol} . "]");
-		return $gpc->{socket}, $self->routers->{$uri->protocol}->execute_gpc($gpc)
+	if (exists $self->processors->{$uri->protocol}) {
+		$self->warn(1, "processing gpc '" . $uri->as_string . "' with router [" . $self->processors->{$uri->protocol} . "]");
+		return $gpc->{socket}, $self->processors->{$uri->protocol}->execute_gpc($gpc)
 	} else {
 		$self->warn(1, "no router found for protocol '" . $uri->protocol . "'");
 		return

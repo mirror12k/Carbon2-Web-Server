@@ -17,22 +17,32 @@ sub new {
 	my $self = $class->SUPER::new(%args);
 
 	$self->{routes} = [];
+	$self->{default_route} = undef;
 
 	return $self
 }
 
 sub route {
-	my ($self, $path, $method, $opts) = @_;
+	my ($self, $path, $callback, $opts) = @_;
 	$opts //= {};
 
-	$method = ref $method eq 'ARRAY' ? [@$method] : [$method];
+	$callback = ref $callback eq 'ARRAY' ? [ @$callback ] : [ $callback ];
 	$path = quotemeta $path unless ref $path eq 'Regexp';
 	$path = qr/\A$path\Z/;
 
-	my $route = { regex => $path, functions => $method, options => $opts };
+	my $route = { regex => $path, functions => $callback, options => $opts };
 	push @{$self->{routes}}, $route;
 
 	# $self->warn($CARBON_FIBER_DEBUG_VALUE, "added route for path $path");
+
+	return $self
+}
+
+sub default_route {
+	my ($self, $callback, $opts) = @_;
+
+	$callback = ref $callback eq 'ARRAY' ? [ @$callback ] : [ $callback ];
+	$self->{default_route} = { functions => $callback, options => $opts };
 
 	return $self
 }
@@ -42,16 +52,18 @@ sub execute_gpc {
 
 	my $uri = $gpc->{uri};
 	my $req = $gpc->{data};
-	my $res;
+	my @results;
 
 	for my $route (@{$self->{routes}}) {
 		if ($uri->path =~ $route->{regex}) {
-			$res = $_->($self, $req, $res) for @{$route->{functions}};
+			@results = $_->($self, $req, @results) for @{$route->{functions}};
 		}
 	}
-	$res = Carbon::HTTP::Response->new(404, 'Not Found', { 'content-length' => [ length 'Not Found' ] }, 'Not Found') unless defined $res;
-	
-	return $res
+	unless (@results) {
+		@results = $_->($self, $req, @results) for @{$self->{default_route}{functions}};
+	}
+
+	return @results
 }
 
 1;

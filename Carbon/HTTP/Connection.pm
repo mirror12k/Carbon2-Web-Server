@@ -78,6 +78,7 @@ sub parse_http_header {
 
 sub result {
 	my ($self, $response) = @_;
+	$response = $response // Carbon::HTTP::Response->new(404, 'Not Found', { 'content-length' => [ length 'Not Found' ] }, 'Not Found');
 	$self->{socket}->print($response->as_string);
 }
 
