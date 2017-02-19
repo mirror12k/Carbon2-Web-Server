@@ -7,6 +7,8 @@ use feature 'say';
 use lib '../..';
 
 use Carbon2;
+use Carbon::TCPReceiver;
+use Carbon::HTTP::Connection;
 use Carbon::Router;
 use Carbon::HTTP::Response;
 
@@ -70,6 +72,9 @@ $rtr->default_route(sub {
 
 my $svr = Carbon2->new(
 	debug => 1,
+	receivers => [
+		Carbon::TCPReceiver->new(2048 => 'Carbon::HTTP::Connection'),
+	],
 	processors => {
 		'http:' => $rtr,
 	},

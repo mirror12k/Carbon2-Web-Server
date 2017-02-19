@@ -8,23 +8,25 @@ use lib '../..';
 
 use Carbon2;
 use Carbon::TCPReceiver;
+use Carbon::SSLReceiver;
 use Carbon::HTTP::Connection;
-use Carbon::HTTP::CGIServer;
+use Carbon::HTTP::FileServer;
 
 use Data::Dumper;
 
 
 
-
+die 'please run generate_certificate.sh to generate the ssl certificate for the server' unless -e 'cert.pem';
 
 my $svr = Carbon2->new(
 	debug => 1,
 	receivers => [
 		Carbon::TCPReceiver->new(2048 => 'Carbon::HTTP::Connection'),
+		Carbon::SSLReceiver->new(2047 => 'Carbon::HTTP::Connection', ssl_certificate => 'cert.pem', ssl_key => 'key.pem'),
 	],
 	processors => {
-		'http:' => Carbon::HTTP::CGIServer->new
-			->route_cgi('/' => 'bin/', default_file => 'index.php')
+		'http:' => Carbon::HTTP::FileServer->new
+			->route_directory('/' => '.')
 	},
 );
 
