@@ -57,7 +57,7 @@ sub load_static_file {
 	my $data = read_binary($filepath);
 	$res->content($data);
 	$res->header('content-length' => length $res->content);
-	$self->set_content_type($filepath, $res);
+	$res->header('content-type' => $self->get_content_type($filepath));
 
 	return $res
 }
@@ -82,11 +82,11 @@ sub load_directory_list {
 	return $res
 }
 
-sub set_content_type {
-	my ($self, $filepath, $res) = @_;
+sub get_content_type {
+	my ($self, $filepath) = @_;
 
 	my $content_type = Carbon::HTTP::MIME::get_mime_type($filepath);
-	$res->header('content-type' => $content_type // 'text/plain');
+	return $content_type // 'text/plain'
 }
 
 1;
