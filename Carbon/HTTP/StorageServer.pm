@@ -10,12 +10,18 @@ use File::Path qw/ make_path remove_tree /;
 use Carbon::HTTP::MIME;
 use Carbon::HTTP::Response;
 
+use JSON;
+
 
 
 # a generic RESTful file storage server
 
 sub route_storage {
 	my ($self, $path, $directory, %opts) = @_;
+
+	my $permissions = defined $opts{permission}
+			? $self->load_permissions($opts{permission})
+			: { anon => { read => 1, write => 1 } };
 
 	return $self->route(qr/$path.*/ => sub {
 		my ($self, $req) = @_;
@@ -26,13 +32,33 @@ sub route_storage {
 		$loc = join '/', grep $_ !~ /\.\./, grep $_ ne '', split '/', $loc;
 		$loc = "$directory/$loc";
 
+		my $user = $req->uri->query_form->{user} // 'anon';
+
 		my $res;
 		if ($req->method eq 'GET') {
-			$res = $self->get_file($loc);
+			if (exists $permissions->{$user} and $permissions->{$user}{read}) {
+				$res = $self->get_file($loc);
+			} else {
+				$res = Carbon::HTTP::Response->new('403', 'Forbidden');
+				$res->content('Forbidden');
+				$res->header('content-length' => length $res->content);
+			}
 		} elsif ($req->method eq 'PUT') {
-			$res = $self->put_file($loc, $req->content);
+			if (exists $permissions->{$user} and $permissions->{$user}{write}) {
+				$res = $self->put_file($loc, $req->content);
+			} else {
+				$res = Carbon::HTTP::Response->new('403', 'Forbidden');
+				$res->content('Forbidden');
+				$res->header('content-length' => length $res->content);
+			}
 		} elsif ($req->method eq 'DELETE') {
-			$res = $self->delete_file($loc);
+			if (exists $permissions->{$user} and $permissions->{$user}{write}) {
+				$res = $self->delete_file($loc);
+			} else {
+				$res = Carbon::HTTP::Response->new('403', 'Forbidden');
+				$res->content('Forbidden');
+				$res->header('content-length' => length $res->content);
+			}
 		} else {
 			$res = Carbon::HTTP::Response->new('400', 'Bad Request');
 			$res->content('Bad Request');
@@ -41,6 +67,12 @@ sub route_storage {
 
 		return $res
 	});
+}
+
+sub load_permissions {
+	my ($self, $filepath) = @_;
+	die "missing permissions file '$filepath'" unless -e -f $filepath;
+	return decode_json read_binary ($filepath)
 }
 
 sub get_file {
