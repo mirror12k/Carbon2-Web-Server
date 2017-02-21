@@ -47,6 +47,8 @@ sub add_plugin {
 	my ($self, $plugin) = @_;
 	push @{$self->plugins}, $plugin;
 	$plugin->initialize($self);
+
+	return $self
 }
 
 sub init_thread {
@@ -61,7 +63,7 @@ sub init_thread {
 
 sub execute_dynamic_file {
 	my ($self, $file, $req) = @_;
-	my $runtime = Carbon::Anthracite::Runtime->new($self, $req);
+	my $runtime = $self->create_runtime($req);
 	$runtime->execute($self->compile_dynamic_file($file));
 	return $runtime->produce_response
 }
@@ -74,6 +76,15 @@ sub include_dynamic_file {
 sub compile_dynamic_file {
 	my ($self, $file) = @_;
 	return Carbon::Anthracite::Compiler->new($self->plugins)->compile($file);
+}
+
+sub create_runtime {
+	my ($self, $req) = @_;
+	my $runtime = Carbon::Anthracite::Runtime->new($self, $req);
+	for my $plugin (@{$self->plugins}) {
+		$runtime = $plugin->create_runtime($runtime);
+	}
+	return $runtime
 }
 
 sub route_dynamic {

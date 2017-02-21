@@ -88,7 +88,7 @@ sub get_token {
 											# this is a fix for some inexplicable behavior where the 
 											# \Z will match on the newline before the end of the string
 				(.+?)(?:(?=<)|\Z) # match regular text
-			/smxg) {
+			/sxg) {
 		my ($tag, $tag_type, $tag_data, $directive, $directive_type, $directive_data, $text) = ($1, $2, $3, $4, $5, $6, $7);
 
 		# parse the result
