@@ -1,0 +1,11 @@
+<!doctype html>
+<html>
+<body>
+	<h1>hello there {{user}}!</h1>
+
+	<form method='GET' action='#'>
+		<input type='text' name='user' />
+		<button>try it!</button>
+	</form>
+</body>
+</html>
