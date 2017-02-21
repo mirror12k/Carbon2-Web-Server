@@ -1,0 +1,47 @@
+<?graphite
+
+
+
+#template logical
+	<p> logical got $_ ; 
+	#if ($_ eq 'asdf')
+		it is 'asdf' :D
+	#/
+	#else
+		it is something else :(
+	#/
+	</p>
+#/
+
+#template branching
+	<p> branching got $_ ;
+	#if ($_ eq 1)
+		it is 1
+	#/
+	#elsif ($_ > 1)
+		it is greater than 1
+	#/
+	#else
+		it is less than 1
+	#/
+	</p>
+#/
+
+
+<!doctype html>
+<html>
+<body>
+	<p><b>logical:</b></p>
+	@logical->'qwerty'
+	@logical->'asdf'
+	@logical->15
+	
+	<p><b>branching:</b></p>
+	@branching->15
+	@branching->0
+	@branching->500
+	@branching->1
+	@branching->-5
+</body>
+</html>
+

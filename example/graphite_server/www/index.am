@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<body>
+<?graphite
+
+	#template link
+		<p><a href="$_">$_</a></p>
+	#/
+
+	#template link_page
+		<h1>My example Graphite pages:</h1>
+		#foreach $_
+			@link->$_
+		#/
+	#/
+
+	@link_page->[
+		'hello_world.am',
+		'examples.am',
+		'logic.am',
+		'namespaces.am',
+	]
+
+?>
+</body>
+</html>
+	

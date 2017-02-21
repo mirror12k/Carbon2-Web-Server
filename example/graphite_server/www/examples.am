@@ -1,0 +1,169 @@
+<!doctype html>
+<html>
+	<body>
+<?graphite
+
+
+	###
+		welcome to the basic test file which displays a few simple examples of how to use graphite
+
+		this is a comment
+	###
+	
+
+	### a basic template ###
+	#template yeti
+		<h1>hello world</h1>
+	#/
+
+	### a template that takes an argument and puts it into text ###
+	#template my_arg
+		<p> hello, my arg is <i>$_</i></p>
+	#/
+
+	### a template that takes an hash ref argument and puts its fields into text ###
+	#template argy
+		<div>
+			<h1>$name</h1>
+			<ul>
+				<li>job: $job</li>
+				<li>age: $age</li>
+				<li>price: $price</li>
+			</ul>
+		</div>
+	#/
+
+	### a template that takes an array ref and iterates over its values ###
+	#template loopy
+		<ul>
+		#foreach $_
+			<li>$_</li>
+		#/
+		</ul>
+	#/
+
+	### a template that includes other templates inside ###
+	#template multi_yeti
+		<div id='yetis'>
+			<p>my yetis:</p>
+			@yeti
+			@yeti
+			@yeti
+		</div>
+	#/
+
+	### a template that uses with to get values of deep hashes and arrays ###
+	#template deep_hashes
+		<div class="where are we">
+		#with $subkey
+			<p class="magic">$magic</p>
+			<p class="more magic">$more_magic</p>
+		#/
+		#with $otherkey
+			<p class="moar magic">$moar_magic</p>
+			#foreach $MOAR
+				<p class="moar">$_</p>
+			#/
+		#/
+		</div>
+	#/
+
+	### a template that includes a template which was passed in as an argument ###
+	#template dynamic_includer
+		<div class="my dynamics">
+			@$_->'dynamic values!'
+		</div>
+	#/
+
+
+	### a basic template that writes data from a hash ref ###
+	#template hashy
+		<div class="hashy">
+			<h4>hello $name!</h4>
+			<p>your last name is $lastname</p>
+			<p>your subtotal is $subtotal</p>
+			<p>your tax is $tax</p>
+			<p>your total is $total</p>
+		</div>
+	#/
+
+
+	<div class="example basic template invocation">
+		@yeti
+		@multi_yeti
+		@my_arg->'testval'
+		@my_arg->'hello world'
+	</div>
+
+	<div class="example looping and passing arrays to templates">
+		<p> my loops: </p>
+		@loopy->[]
+		@loopy->['asdf']
+		@loopy->[5425, 47435,]
+		@loopy->['up','up','down','down',   'left'     ,  'right'   ,'left',    'right'   , 'start']
+	</div>
+
+	<div class="example passing hashes to templates">
+		@hashy->{ name => 'john', lastname => 'smith', subtotal => 100, tax => 10, total => 110 }
+		@hashy->{ name => 'jane', lastname => 'doe', subtotal => 50, tax => 14, total => 57 }
+	</div>
+
+	<div class="example passing templates to templates">
+		@dynamic_includer->@yeti
+		@dynamic_includer->@my_arg
+	</div>
+
+	<div class="example invoking a template with deep hash ref argument">
+		@deep_hashes->{
+			subkey => {
+				magic => 'hi',
+				more_magic => 'there,',
+			},
+			otherkey => {
+				moar_magic => 'im',
+				MOAR => [
+					'a',
+					'deep',
+					'hash!',
+				],
+			},
+		}
+	</div>
+?>
+
+		<div class="example invoking templates from perl code">
+<?perl
+
+	
+	# rendering various templates
+	echo $graphite->render_template(argy => { name => 'john', job => 'programmer', age => 35, price => 15000});
+	echo $graphite->render_template(loopy => [1,2,5]);
+	echo $graphite->render_template(loopy => ['a' .. 'e']);
+
+	# passing complex structures to templates
+	echo $graphite->render_template(deep_hashes => {
+		subkey => {
+			magic => 'THIS',
+			more_magic => 'IS',
+		},
+		otherkey => {
+			moar_magic => 'SPARTA',
+			MOAR => [
+				'A',
+				'A',
+				'A',
+				'A',
+				'A',
+				'A',
+				'A',
+			],
+		},
+	});
+
+	# passing templates to templates
+	echo $graphite->render_template(dynamic_includer => $graphite->get_template('my_arg'));
+
+?>
+		</div>
+	</body>
+</html>

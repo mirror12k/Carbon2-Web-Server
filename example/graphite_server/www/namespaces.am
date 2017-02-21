@@ -1,0 +1,36 @@
+<?graphite
+
+
+	#namespace generic
+		#template header
+			<!doctype html>
+			<html>
+			<head>
+				<title>$_</title>
+			</head>
+			<body>
+				<p>head of document</p>
+		#/
+
+		#template tail
+				<p>end of document</p>
+			</body>
+			</html>
+		#/
+
+		#namespace super
+			#template man
+				<p>this is a namespace within a namespace!</p>
+			#/
+		#/
+	#/
+
+	#template my_work::example
+		<p>hello world</p>
+		@generic::super::man
+	#/
+
+	@generic::header->'namespace test'
+	@my_work::example
+	@generic::tail
+
