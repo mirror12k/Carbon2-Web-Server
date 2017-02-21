@@ -91,7 +91,7 @@ sub route_dynamic {
 		$loc = join '/', grep $_ !~ /\A\./, grep $_ ne '', split '/', $loc;
 		$loc = "$directory/$loc";
 
-		say "debug loc: $loc";
+		# say "debug loc: $loc";
 		my $res;
 		if (-e -f "$loc$suffix") { # if the file exists
 			if ("$loc$suffix" =~ $executable) { # if it's executable

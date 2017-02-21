@@ -1,0 +1,10 @@
+<?perl
+	echo "sending out warnings!";
+
+	$runtime->warn('this is a warning from my anthracite script that will be visible in server console!');
+
+	echo "dying!";
+	
+	$runtime->die('this is an example of intentional death from an anthracite script!');
+
+	echo "never printed!";

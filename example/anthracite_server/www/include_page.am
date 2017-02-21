@@ -1,0 +1,9 @@
+<?perl
+	unless ($runtime->{main_loaded}) {
+		$runtime->die('this script is only accessible by inclusion from main_page.am');
+	}
+
+	package SomeImportantPackageDefinition;
+	sub fun {
+		$runtime->echo("hello from SomeImportantPackageDefinition!");
+	}

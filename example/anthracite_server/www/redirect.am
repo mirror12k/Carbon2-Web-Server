@@ -1,0 +1,2 @@
+<?perl
+	$runtime->redirect('hello_world.am');

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title></title>
+</head>
+<body>
+	<?perl
+		echo '<h1>Hello world! You can find my pages down below:</h1>';
+
+		# read all files in the www directory and spit them out into view
+		opendir my $dh, 'www';
+		my @files = sort grep -f "www/$_", readdir $dh;
+		closedir $dh;
+
+		foreach my $file (@files) {
+			echo "<p><a href='$file'>$file</a></p>";
+		}
+	?>
+</body>
+</html>

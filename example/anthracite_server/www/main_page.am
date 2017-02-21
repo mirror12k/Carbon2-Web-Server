@@ -1,0 +1,4 @@
+<?perl
+	$runtime->{main_loaded} = 1;
+	$runtime->include('www/include_page.am');
+	SomeImportantPackageDefinition::fun();

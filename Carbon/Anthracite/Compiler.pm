@@ -26,7 +26,7 @@ sub plugins { @_ > 1 ? $_[0]{carbon_anthracite_compiler__plugins} = $_[1] : $_[0
 sub compile {
 	my ($self, $file) = @_;
 
-	warn "compiling '$file'";
+	# warn "compiling '$file'";
 
 	my $data = Carbon::Anthracite::CompiledFile->new;
 	$data->filepath($file);
@@ -60,7 +60,7 @@ sub compile {
 	}
 	$code .= $self->code_tail($data);
 
-	say "compiled code: $code";
+	# say "compiled code: $code";
 
 	my $compiled = eval $code;
 	if ($@) {

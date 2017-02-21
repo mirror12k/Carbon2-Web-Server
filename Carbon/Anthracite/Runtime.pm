@@ -83,6 +83,7 @@ sub execute {
 		$self->warn ("dynamic file died: $@");
 		my $res = Carbon::HTTP::Response->new('500');
 		$res->content("dynamic file died: $@");
+		$res->header('content-type' => 'text/plain');
 		$res->header('content-length' => length ($res->content // ''));
 		$self->response($res);
 	}
