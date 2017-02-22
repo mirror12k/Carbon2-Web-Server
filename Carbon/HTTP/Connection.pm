@@ -12,8 +12,10 @@ use Data::Dumper;
 
 
 
-sub produce_gpc {
+sub read_buffered {
 	my ($self) = @_;
+
+	$self->SUPER::read_buffered;
 
 	# if there is no request for this socket yet
 	unless (defined $self->{http_request}) {
@@ -46,13 +48,13 @@ sub produce_gpc {
 				# start the job
 				# say "debug got request: ", $req->as_string;
 				$self->{http_request} = undef;
-				return format_gpc($req)
+				$self->produce_gpc(format_gpc($req));
 			}
 		} else {
 			# if there is no body, start the job immediately
 			# say "debug got request: ", $req->as_string;
 			$self->{http_request} = undef;
-			return format_gpc($req)
+			$self->produce_gpc(format_gpc($req));
 		}
 	}
 	return

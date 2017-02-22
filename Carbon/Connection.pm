@@ -7,9 +7,10 @@ use feature 'say';
 
 
 sub new {
-	my ($class, $socket) = @_;
+	my ($class, $server, $socket) = @_;
 	my $self = bless {}, $class;
 
+	$self->{server} = $server;
 	$self->{socket} = $socket;
 	$self->{buffer} = '';
 	return $self
@@ -28,12 +29,7 @@ sub read_buffered {
 	}
 	# say "read: $total";
 	# $self->delete_socket($fh) if $total == 0;
-	return $total == 0
-}
-
-sub produce_gpc {
-	my ($self) = @_;
-	die "unimplemented ->produce_gpc in $self";
+	$self->remove_self if $total == 0;
 }
 
 sub result {
@@ -41,9 +37,20 @@ sub result {
 	die "unimplemented ->result in $self";
 }
 
+sub remove_self {
+	my ($self) = @_;
+	$self->{server}->remove_connection($self->{socket});
+}
+
 sub close {
 	my ($self) = @_;
 	$self->{socket}->close;
+}
+
+sub produce_gpc {
+	my ($self, $gpc) = @_;
+	$gpc->{socket} = "$self->{socket}";
+	$self->{server}->schedule_gpc($gpc)
 }
 
 1;

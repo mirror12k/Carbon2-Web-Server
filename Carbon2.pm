@@ -65,6 +65,8 @@ sub processors { @_ > 1 ? $_[0]{carbon_server__processors} = $_[1] : $_[0]{carbo
 sub connection_processing_workers { @_ > 1 ? $_[0]{carbon_server__connection_processing_workers} = $_[1] : $_[0]{carbon_server__connection_processing_workers} }
 sub request_processing_workers { @_ > 1 ? $_[0]{carbon_server__request_processing_workers} = $_[1] : $_[0]{carbon_server__request_processing_workers} }
 
+sub processing_selector { @_ > 1 ? $_[0]{carbon_server__processing_selector} = $_[1] : $_[0]{carbon_server__processing_selector} }
+sub active_connections { @_ > 1 ? $_[0]{carbon_server__active_connections} = $_[1] : $_[0]{carbon_server__active_connections} }
 
 
 
@@ -144,7 +146,7 @@ sub listen_accept_server_loop {
 		# say "in loop";
 		foreach my $socket ($self->socket_selector->can_read(500 / 1000)) {
 			my $new_socket = $socket->accept;
-			$self->warn(1, "got connection $new_socket");
+			# $self->warn(1, "got connection $new_socket");
 			$new_socket->blocking(0); # set it to non-blocking
 			$self->server_socket_queue->enqueue([ "$socket", fileno $new_socket ]);
 			push @socket_cache, $new_socket;
@@ -185,8 +187,10 @@ sub start_connection_thread {
 		},
 	}));
 
-	my $selector = IO::Select->new;
-	my %socket_connections;
+	$self->processing_selector(IO::Select->new);
+	# my $selector = IO::Select->new;
+	$self->active_connections({});
+	# my %socket_connections;
 
 	$self->server_running(1);
 
@@ -195,22 +199,23 @@ sub start_connection_thread {
 
 		if (not defined $queue->pending) {
 			$self->server_running(0);
-		} elsif ($selector->count) {
-			foreach my $socket ($selector->can_read(10 / 1000)) {
-				my $connection = $socket_connections{"$socket"};
+		} elsif ($self->processing_selector->count) {
+			foreach my $socket ($self->processing_selector->can_read(10 / 1000)) {
+				my $connection = $self->active_connections->{"$socket"};
 				my $status = $connection->read_buffered;
-				if ($status) {
-					$self->warn(1, "force closing $socket due to bad status");
-					close $socket;
-					$selector->remove($socket);
-				} else {
-					while (my $gpc = $connection->produce_gpc) {
-						# say "got gpc from connection: ", Dumper $gpc;
-						$gpc->{socket} = "$socket";
-						# we must read the jobid, otherwise Thread::Pool will think that we don't want the results
-						my $jobid = $self->processing_thread_pool->job($gpc);
-					}
-				}
+				# if ($status) {
+				# 	$self->remove_connection($socket);
+				# 	# $self->warn(1, "force closing $socket due to bad status");
+				# 	# close $socket;
+				# 	# $self->processing_selector->remove($socket);
+				# # } else {
+				# # 	while (my $gpc = $connection->produce_gpc) {
+				# # 		# say "got gpc from connection: ", Dumper $gpc;
+				# # 		$gpc->{socket} = "$socket";
+				# # 		# we must read the jobid, otherwise Thread::Pool will think that we don't want the results
+				# # 		my $jobid = $self->processing_thread_pool->job($gpc);
+				# # 	}
+				# }
 			}
 
 			my @jobids = $self->processing_thread_pool->results;
@@ -219,7 +224,7 @@ sub start_connection_thread {
 				# reclaim any socket whose job has completed
 				# say "job [$jobid] completed!"; # JOBS DEBUG
 				# $self->warn(1, "got result from job $jobid for socket $socket");
-				my $connection = $socket_connections{"$socket"};
+				my $connection = $self->active_connections->{"$socket"};
 				# TODO: close connection if results are empty
 				$connection->result(@results);
 			}
@@ -229,10 +234,11 @@ sub start_connection_thread {
 				my $receiver = $self->receiver_map->{$parent_socket};
 
 				$socket = $receiver->restore_socket($socket);
-				my $connection = $receiver->start_connection($socket);
+				my $connection = $receiver->start_connection($self, $socket);
 
-				$socket_connections{"$socket"} = $connection;
-				$selector->add($socket);
+				$self->add_connection($socket, $connection);
+				# $self->active_connections->{"$socket"} = $connection;
+				# $self->processing_selector->add($socket);
 			}
 		} else {
 			my $instruction = $queue->dequeue();
@@ -241,15 +247,39 @@ sub start_connection_thread {
 				my $receiver = $self->receiver_map->{$parent_socket};
 
 				$socket = $receiver->restore_socket($socket);
-				my $connection = $receiver->start_connection($socket);
+				my $connection = $receiver->start_connection($self, $socket);
 
-				$socket_connections{"$socket"} = $connection;
-				$selector->add($socket);
+				$self->add_connection($socket, $connection);
+				# $self->active_connections->{"$socket"} = $connection;
+				# $self->processing_selector->add($socket);
 			}
 		}
 	}
 
 	$self->processing_thread_pool->shutdown;
+}
+
+sub add_connection {
+	my ($self, $connection_socket, $connection) = @_;
+
+	$self->warn(1, "new socket $connection_socket");
+	$self->processing_selector->add($connection_socket);
+	$self->active_connections->{"$connection_socket"} = $connection;
+}
+
+sub remove_connection {
+	my ($self, $connection_socket) = @_;
+
+	$self->warn(1, "closing socket $connection_socket");
+	$self->processing_selector->remove($connection_socket);
+	$self->active_connections->{"$connection_socket"}->close;
+	delete $self->active_connections->{"$connection_socket"};
+}
+
+sub schedule_gpc {
+	my ($self, $gpc) = @_;
+	# we must read the jobid, otherwise Thread::Pool will think that we don't want the results
+	my $jobid = $self->processing_thread_pool->job($gpc);
 }
 
 sub init_processing_thread {
