@@ -48,13 +48,13 @@ sub read_buffered {
 				# start the job
 				# say "debug got request: ", $req->as_string;
 				$self->{http_request} = undef;
-				$self->produce_gpc(format_gpc($req));
+				$self->on_http_request($req);
 			}
 		} else {
 			# if there is no body, start the job immediately
 			# say "debug got request: ", $req->as_string;
 			$self->{http_request} = undef;
-			$self->produce_gpc(format_gpc($req));
+			$self->on_http_request($req);
 		}
 	}
 	return
@@ -75,6 +75,11 @@ sub result {
 	my ($self, $response) = @_;
 	$response = $response // Carbon::HTTP::Response->new(404, 'Not Found', { 'content-length' => [ length 'Not Found' ] }, 'Not Found');
 	$self->{socket}->print($response->as_string);
+}
+
+sub on_http_request {
+	my ($self, $req) = @_;
+	$self->produce_gpc(format_gpc($req));
 }
 
 sub format_gpc {

@@ -202,7 +202,8 @@ sub start_connection_thread {
 		} elsif ($self->processing_selector->count) {
 			foreach my $socket ($self->processing_selector->can_read(10 / 1000)) {
 				my $connection = $self->active_connections->{"$socket"};
-				my $status = $connection->read_buffered;
+				# my $status = 
+				$connection->read_buffered;
 				# if ($status) {
 				# 	$self->remove_connection($socket);
 				# 	# $self->warn(1, "force closing $socket due to bad status");
@@ -257,6 +258,13 @@ sub start_connection_thread {
 	}
 
 	$self->processing_thread_pool->shutdown;
+}
+
+sub recast_connection {
+	my ($self, $connection_socket, $new_connection) = @_;
+
+	$self->warn(1, "recast socket $connection_socket as $new_connection");
+	$self->active_connections->{"$connection_socket"} = $new_connection;
 }
 
 sub add_connection {

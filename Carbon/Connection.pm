@@ -53,4 +53,10 @@ sub produce_gpc {
 	$self->{server}->schedule_gpc($gpc)
 }
 
+sub respawn_as {
+	my ($self, $connection) = @_;
+
+	$self->{server}->recast_connection($self->{socket}, $connection);
+}
+
 1;
