@@ -310,7 +310,7 @@ sub process_gpc {
 		return $gpc->{socket}, $self->processors->{$uri->protocol}->execute_gpc($gpc)
 	} else {
 		$self->warn(1, "no router found for protocol '" . $uri->protocol . "'");
-		return
+		return $gpc->{socket}
 	}
 }
 
