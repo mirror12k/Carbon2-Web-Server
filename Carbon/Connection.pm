@@ -32,6 +32,17 @@ sub read_buffered {
 	$self->remove_self if $total == 0;
 }
 
+sub write_buffered {
+	my ($self, $text) = @_;
+	my $wrote = 0;
+	while ($wrote < length $text) {
+		my $wrote_more = $self->{socket}->syswrite($text, length ($text) - $wrote, $wrote);
+		$wrote += $wrote_more if defined $wrote_more;
+
+		say "wrote $wrote of length ", length $text;
+	}
+}
+
 sub result {
 	my ($self) = @_;
 	die "unimplemented ->result in $self";
