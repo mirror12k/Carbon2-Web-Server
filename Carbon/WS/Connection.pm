@@ -7,6 +7,7 @@ use feature 'say';
 
 use Carbon::URI;
 
+use Encode;
 use Carp;
 use Data::Dumper;
 
@@ -37,6 +38,15 @@ our %frame_opcode_types = (
 	0xD => 'reserved',
 	0xE => 'reserved',
 	0xF => 'reserved',
+);
+
+our %frame_opcode_numbers = (
+	continuation => 0x0,
+	text => 0x1,
+	binary => 0x2,
+	close => 0x8,
+	ping => 0x9,
+	pong => 0xA,
 );
 
 sub read_buffered {
@@ -116,12 +126,12 @@ sub read_buffered {
 sub on_frame {
 	my ($self, $frame) = @_;
 
-	say "debug got frame: ", Dumper $frame;
+	# say "debug got frame: ", Dumper $frame;
 	if ($frame->{opcode} eq 'continuation') {
 		if (defined $self->{fragmented_frame}) {
 			$self->{fragmented_frame}{data} .= $frame->{data};
 			if ($frame->{fin}) {
-				$self->on_text_frame($self->{fragmented_frame});
+				$self->on_application_frame($self->{fragmented_frame});
 				$self->{fragmented_frame} = undef;
 			}
 		} else {
@@ -130,42 +140,47 @@ sub on_frame {
 		}
 	} elsif ($frame->{opcode} eq 'text' or $frame->{opcode} eq 'binary') {
 		if ($frame->{fin}) {
-			$self->on_text_frame($frame);
+			$self->on_application_frame($frame);
 		} else {
 			$self->{fragmented_frame} = $frame;
 		}
 	} elsif ($frame->{opcode} eq 'close') {
 		$self->remove_self;
 	} elsif ($frame->{opcode} eq 'ping') {
-		# nothing
+		$self->send_frame({
+			fin => 1,
+			opcode => 'pong',
+			data => $frame->{data},
+		});
 	} elsif ($frame->{opcode} eq 'pong') {
 		# nothing
 	} elsif ($frame->{opcode} eq 'reserved') {
 		warn "invalid frame from client";
 		$self->remove_self;
 	} else {
-		confess "critical error";
+		confess "critical error: invalid frame";
 	}
 
 }
 
-sub on_text_frame {
+sub on_application_frame {
 	my ($self, $frame) = @_;
-	say "got text frame: $frame->{data}";
-	$self->send_frame({
-		fin => 1,
-		flags => 0,
-		opcode => 1,
-		data => 'hi there!',
-	});
+	# say "debug got text frame: $frame->{data}";
+
+	if ($frame->{opcode} eq 'text') {
+		$frame->{data} = decode('UTF-8', $frame->{data}, Encode::FB_CROAK);
+	}
+	
 	$self->produce_gpc(format_gpc($frame->{data}, $self->{uri}));
 }
 
 sub send_frame {
 	my ($self, $frame) = @_;
 
+	$frame->{opcode} = $frame_opcode_numbers{$frame->{opcode}} // croak "invalid frame opcode: $frame->{opcode}";
 	$frame->{length} = length $frame->{data};
 	$frame->{mask_bit} = $frame->{mask} ? 1 : 0;
+	$frame->{flags} //= 0;
 	
 	my $flags_byte = ($frame->{fin} << 7) | ($frame->{flags} << 4) | ($frame->{opcode});
 	my $length_byte = ($frame->{mask_bit} << 7);
@@ -206,8 +221,25 @@ sub format_gpc {
 }
 
 sub result {
-	my ($self) = @_;
-	# nothing
+	my ($self, $commands) = @_;
+
+	foreach my $command (@$commands) {
+		if ($command->{type} eq 'close') {
+			$self->send_frame({
+				fin => 1,
+				opcode => 'close',
+			});
+			$self->remove_self;
+		} elsif ($command->{type} eq 'text') {
+			$self->send_frame({
+				fin => 1,
+				opcode => 'text',
+				data => $command->{text},
+			});
+		} else {
+			warn "invalid websocket result command: $command->{type}";
+		}
+	}
 }
 
 1;
