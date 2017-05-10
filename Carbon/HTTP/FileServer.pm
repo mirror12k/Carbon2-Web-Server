@@ -26,10 +26,20 @@ sub route_directory {
 		if (-e $loc) { # if the location exists
 			if (-f _) { # if it's a file
 				$res = $self->load_static_file($loc);
-			} elsif (-d _ and not $opts{forbid_directories}) { # if it's a directory
-				# say "debug: $opts->{forbid_directories}";
-				$res = $self->load_directory_list($loc, $req->uri->path);
-			} else {
+			} elsif (-d _) { # if it's a directory
+				if (defined $opts{default_file} and -e -f "$loc/$opts{default_file}") {
+					$res = $self->load_static_file("$loc/$opts{default_file}");
+				} elsif (not $opts{forbid_directories}) {
+					# say "debug: $opts->{forbid_directories}";
+					$res = $self->load_directory_list($loc, $req->uri->path);
+				} else {
+					$res //= Carbon::HTTP::Response->new;
+					$res->code('403');
+					$res->content('Forbidden');
+					$res->header('content-type' => 'text/plain');
+					$res->header('content-length' => length $res->content);
+				}
+			} else { # we forbid anything else
 				$res //= Carbon::HTTP::Response->new;
 				$res->code('403');
 				$res->content('Forbidden');
