@@ -58,6 +58,7 @@ sub socket_selector { @_ > 1 ? $_[0]{carbon_server__socket_selector} = $_[1] : $
 sub server_socket_queue { @_ > 1 ? $_[0]{carbon_server__server_socket_queue} = $_[1] : $_[0]{carbon_server__server_socket_queue} }
 sub connection_thread_pool { @_ > 1 ? $_[0]{carbon_server__connection_thread_pool} = $_[1] : $_[0]{carbon_server__connection_thread_pool} }
 sub processing_thread_pool { @_ > 1 ? $_[0]{carbon_server__processing_thread_pool} = $_[1] : $_[0]{carbon_server__processing_thread_pool} }
+sub scheduled_jobs { @_ > 1 ? $_[0]{carbon_server__scheduled_jobs} = $_[1] : $_[0]{carbon_server__scheduled_jobs} }
 
 sub receivers { @_ > 1 ? $_[0]{carbon_server__receivers} = $_[1] : $_[0]{carbon_server__receivers} }
 sub receiver_map { @_ > 1 ? $_[0]{carbon_server__receiver_map} = $_[1] : $_[0]{carbon_server__receiver_map} }
@@ -113,6 +114,20 @@ sub start_thread_pool {
 	my ($self) = @_;
 
 	$self->server_socket_queue(Thread::Queue->new);
+
+	$self->processing_thread_pool(Thread::Pool->new({
+		workers => $self->request_processing_workers,
+		pre => sub {
+			eval { $self->init_processing_thread(@_) };
+			$self->warn(1, "processing thread died during initialization: $@") if $@;
+		},
+		do => sub {
+			my @ret = eval { $self->process_gpc(@_) };
+			$self->warn(1, "processing thread died: $@") if $@;
+			return @ret
+		},
+	}));
+
 	$self->connection_thread_pool(Thread::Pool->new({
 		workers => $self->connection_processing_workers,
 		pre => sub {
@@ -165,7 +180,10 @@ sub cleanup {
 	}
 
 	$self->server_socket_queue->end;
+	$self->warn(1, "shutting down connection thread pool");
 	$self->connection_thread_pool->shutdown;
+	$self->warn(1, "shutting down processing thread pool");
+	$self->processing_thread_pool->shutdown;
 }
 
 
@@ -174,23 +192,12 @@ sub start_connection_thread {
 	my ($self, $queue) = @_;
 
 	$self->warn(1, "start_connection_thread");
-	$self->processing_thread_pool(Thread::Pool->new({
-		workers => $self->request_processing_workers,
-		pre => sub {
-			eval { $self->init_processing_thread(@_) };
-			$self->warn(1, "process thread died during initialization: $@") if $@;
-		},
-		do => sub {
-			my @ret = eval { $self->process_gpc(@_) };
-			$self->warn(1, "process thread died: $@") if $@;
-			return @ret
-		},
-	}));
 
 	$self->processing_selector(IO::Select->new);
 	# my $selector = IO::Select->new;
 	$self->active_connections({});
 	# my %socket_connections;
+	$self->scheduled_jobs({});
 
 	$self->server_running(1);
 
@@ -221,13 +228,16 @@ sub start_connection_thread {
 
 			my @jobids = $self->processing_thread_pool->results;
 			foreach my $jobid ($self->processing_thread_pool->results) {
-				my ($socket, @results) = $self->processing_thread_pool->result($jobid);
-				# reclaim any socket whose job has completed
-				# say "job [$jobid] completed!"; # JOBS DEBUG
-				# $self->warn(1, "got result from job $jobid for socket $socket");
-				my $connection = $self->active_connections->{"$socket"};
-				# TODO: close connection if results are empty
-				$connection->result(@results);
+				if (exists $self->scheduled_jobs->{$jobid}) {
+					delete $self->scheduled_jobs->{$jobid};
+					$self->warn(1, "[" . Thread::Pool->self . "]: got result from job $jobid"); # DEBUG JOBS
+					my ($socket, @results) = $self->processing_thread_pool->result($jobid);
+					# reclaim any socket whose job has completed
+					# say "job [$jobid] completed!"; # JOBS DEBUG
+					my $connection = $self->active_connections->{"$socket"};
+					# TODO: close connection if results are empty
+					$connection->result(@results);
+				}
 			}
 
 			while (my $instruction = $queue->dequeue_nb()) {
@@ -256,8 +266,6 @@ sub start_connection_thread {
 			}
 		}
 	}
-
-	$self->processing_thread_pool->shutdown;
 }
 
 sub recast_connection {
@@ -288,6 +296,8 @@ sub schedule_gpc {
 	my ($self, $gpc) = @_;
 	# we must read the jobid, otherwise Thread::Pool will think that we don't want the results
 	my $jobid = $self->processing_thread_pool->job($gpc);
+	$self->warn(1, "[" . Thread::Pool->self . "]: scheduled job $jobid"); # DEBUG JOBS
+	$self->scheduled_jobs->{$jobid} = 1;
 }
 
 sub init_processing_thread {
