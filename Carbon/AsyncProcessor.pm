@@ -25,22 +25,23 @@ sub delay { @_ > 1 ? $_[0]{delay} = $_[1] : $_[0]{delay} }
 
 
 sub schedule_job {
-	my ($self, $callback, $infinite) = @_;
+	my ($self, $callback, $infinite, @args) = @_;
 
 	push @{$self->scheduled_jobs}, {
 		callback => $callback,
 		infinite => $infinite,
+		args => \@args,
 	};
 }
 
 sub schedule_delayed_job {
-	my ($self, $delay, $callback) = @_;
+	my ($self, $callback, $delay, @args) = @_;
 
 	my $start_time = time;
 	$self->schedule_job(sub {
 		if (time - $start_time >= $delay) {
 			# warn "debug trigger time ", time, " sleeping";
-			$callback->();
+			$callback->(@args);
 		} else {
 			# warn "debug time ", time, " sleeping";
 			$self->schedule_job(__SUB__);
@@ -56,7 +57,7 @@ sub process_loop {
 		my @running_jobs = @{$self->scheduled_jobs};
 		@{$self->scheduled_jobs} = ();
 		foreach my $job (@running_jobs) {
-			$job->{callback}->();
+			$job->{callback}->(@{$job->{args}});
 			push @{$self->scheduled_jobs}, $job if $job->{infinite};
 		}
 		my $frame_time = time - $frame_start;

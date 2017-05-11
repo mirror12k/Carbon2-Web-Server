@@ -69,6 +69,7 @@ sub request_processing_workers { @_ > 1 ? $_[0]{carbon_server__request_processin
 
 sub processing_selector { @_ > 1 ? $_[0]{carbon_server__processing_selector} = $_[1] : $_[0]{carbon_server__processing_selector} }
 sub async_processor { @_ > 1 ? $_[0]{carbon_server__async_processor} = $_[1] : $_[0]{carbon_server__async_processor} }
+sub async_command_queue { @_ > 1 ? $_[0]{carbon_server__async_command_queue} = $_[1] : $_[0]{carbon_server__async_command_queue} }
 sub active_connections { @_ > 1 ? $_[0]{carbon_server__active_connections} = $_[1] : $_[0]{carbon_server__active_connections} }
 
 
@@ -219,10 +220,10 @@ sub start_connection_thread {
 					# $self->active_connections->{"$socket"} = $connection;
 					# $self->processing_selector->add($socket);
 
-					# $self->async_processor->schedule_delayed_job(0.5, sub {
+					# $self->async_processor->schedule_delayed_job(sub {
 					# 	say "timeout for connection $connection";
 					# 	$connection->remove_self;
-					# })
+					# }, 0.5)
 				}
 			} else {
 				while (my $instruction = $queue->dequeue_nb()) {
@@ -255,9 +256,18 @@ sub start_connection_thread {
 					if (exists $self->scheduled_jobs->{$jobid}) {
 						delete $self->scheduled_jobs->{$jobid};
 						# $self->warn(1, "[" . Thread::Pool->self . "]: got result from job $jobid"); # DEBUG JOBS
-						my ($socket, @results) = $self->processing_thread_pool->result($jobid);
+						my ($socket, $async_commands, @results) = $self->processing_thread_pool->result($jobid);
+
+						# queue up any scheduled async jobs that the gpc produced
+						foreach my $command (@$async_commands) {
+							my ($callback, $delay, @args) = @$command;
+							# $self->warn(1, "got async command: @$command");
+							# we need to restore the callback since passing around code refs is not allowed
+							$callback = \&{$callback};
+							$self->schedule_async_job($callback, $delay, @args);
+						}
+
 						# reclaim any socket whose job has completed
-						# say "job [$jobid] completed!"; # JOBS DEBUG
 						my $connection = $self->active_connections->{"$socket"};
 						# TODO: close connection if results are empty
 						$connection->result(@results);
@@ -301,6 +311,21 @@ sub remove_connection {
 	delete $self->active_connections->{"$connection_socket"};
 }
 
+sub schedule_async_job {
+	my ($self, $job, $delay, @args) = @_;
+
+	# in connection thread context, we just put it directly into the async_processor
+	if (defined $self->async_processor) {
+		if (defined $delay) {
+			$self->async_processor->schedule_delayed_job($job, $delay, @args);
+		} else {
+			$self->async_processor->schedule_job($job, 0, @args);
+		}
+	} else {
+		push @{$self->async_command_queue}, [$job, $delay, @args];
+	}
+}
+
 sub schedule_gpc {
 	my ($self, $gpc) = @_;
 	# we must read the jobid, otherwise Thread::Pool will think that we don't want the results
@@ -314,22 +339,23 @@ sub init_processing_thread {
 	my %initialized_processors;
 	for my $processor (values %{$self->processors}) {
 		$self->warn(1, "[" . Thread::Pool->self . "] initializing processor [" . $processor . "]");
-		$processor->init_thread unless exists $initialized_processors{"$processor"};
+		$processor->init_thread($self) unless exists $initialized_processors{"$processor"};
 		$initialized_processors{"$processor"} = 1;
 	}
 }
 
 sub process_gpc {
 	my ($self, $gpc) = @_;
-	# say "got gpc in process: ", Dumper $gpc;
-	my $uri = $gpc->{uri};
+	# $self->warn(1, "got gpc in process: ", Dumper $gpc);
+	$self->async_command_queue([]);
 
+	my $uri = $gpc->{uri};
 	if (exists $self->processors->{$uri->protocol}) {
 		$self->warn(1, "processing gpc '" . $uri->as_string . "' with router [" . $self->processors->{$uri->protocol} . "]");
-		return $gpc->{socket}, $self->processors->{$uri->protocol}->execute_gpc($gpc)
+		return $gpc->{socket}, $self->async_command_queue, $self->processors->{$uri->protocol}->execute_gpc($gpc)
 	} else {
 		$self->warn(1, "no router found for protocol '" . $uri->protocol . "'");
-		return $gpc->{socket}
+		return $gpc->{socket}, $self->async_command_queue
 	}
 }
 
