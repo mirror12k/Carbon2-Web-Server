@@ -2,9 +2,9 @@ package Carbon::AsyncProcessor;
 use strict;
 use warnings;
 
-use feature 'say';
+use feature qw/ say current_sub /;
 
-use Time::HiRes 'usleep';
+use Time::HiRes qw/ usleep time /;
 
 
 
@@ -33,17 +33,38 @@ sub schedule_job {
 	};
 }
 
+sub schedule_delayed_job {
+	my ($self, $delay, $callback) = @_;
+
+	my $start_time = time;
+	$self->schedule_job(sub {
+		if (time - $start_time >= $delay) {
+			# warn "debug trigger time ", time, " sleeping";
+			$callback->();
+		} else {
+			# warn "debug time ", time, " sleeping";
+			$self->schedule_job(__SUB__);
+		}
+	});
+}
+
 sub process_loop {
 	my ($self) = @_;
 	$self->running(1);
 	while ($self->running and @{$self->scheduled_jobs}) {
+		my $frame_start = time;
 		my @running_jobs = @{$self->scheduled_jobs};
 		@{$self->scheduled_jobs} = ();
 		foreach my $job (@running_jobs) {
 			$job->{callback}->();
 			push @{$self->scheduled_jobs}, $job if $job->{infinite};
 		}
-		usleep ($self->delay * 1000);
+		my $frame_time = time - $frame_start;
+		if ($self->delay / 1000 > $frame_time) {
+			my $sleep_time = int (($self->delay / 1000 - $frame_time) * 1000000);
+			# warn "frame time: ", $frame_time, ", sleeping: ", $sleep_time;
+			usleep ($sleep_time);
+		}
 	}
 }
 

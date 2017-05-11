@@ -10,7 +10,7 @@ use Carp;
 use IO::Select;
 use Thread::Pool;
 use Thread::Queue;
-use Time::HiRes 'usleep';
+use Time::HiRes qw/ usleep /;
 
 use Carbon::URI;
 use Carbon::AsyncProcessor;
@@ -218,6 +218,11 @@ sub start_connection_thread {
 					$self->add_connection($socket, $connection);
 					# $self->active_connections->{"$socket"} = $connection;
 					# $self->processing_selector->add($socket);
+
+					# $self->async_processor->schedule_delayed_job(0.5, sub {
+					# 	say "timeout for connection $connection";
+					# 	$connection->remove_self;
+					# })
 				}
 			} else {
 				while (my $instruction = $queue->dequeue_nb()) {
@@ -294,12 +299,6 @@ sub remove_connection {
 	$self->processing_selector->remove($connection_socket);
 	$self->active_connections->{"$connection_socket"}->close;
 	delete $self->active_connections->{"$connection_socket"};
-}
-
-sub schedule_async_job {
-	my ($self, $callback, $infinite) = @_;
-	
-	$self->async_processor->schedule_job($callback, $infinite);
 }
 
 sub schedule_gpc {
