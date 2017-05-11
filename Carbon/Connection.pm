@@ -13,6 +13,7 @@ sub new {
 	$self->{server} = $server;
 	$self->{socket} = $socket;
 	$self->{buffer} = '';
+	$self->{write_buffer} = '';
 	return $self
 }
 
@@ -33,14 +34,24 @@ sub read_buffered {
 }
 
 sub write_buffered {
-	my ($self, $text) = @_;
-	my $wrote = 0;
-	while ($wrote < length $text) {
-		my $wrote_more = $self->{socket}->syswrite($text, length ($text) - $wrote, $wrote);
-		$wrote += $wrote_more if defined $wrote_more;
+	my ($self) = @_;
+	if (length $self->{write_buffer} > 0) {
+		my $wrote = 0;
+		my $wrote_more = 1;
+		while ($wrote < length $self->{write_buffer} and defined $wrote_more and $wrote_more > 0) {
+			$wrote_more = $self->{socket}->syswrite($self->{write_buffer}, length ($self->{write_buffer}) - $wrote, $wrote);
+			$wrote += $wrote_more if defined $wrote_more;
 
-		say "wrote $wrote of length ", length $text;
+			# say "wrote $wrote/", length $self->{write_buffer} if defined $wrote_more and $wrote_more > 0;
+		}
+
+		$self->{write_buffer} = substr $self->{write_buffer}, $wrote;
 	}
+}
+
+sub write_to_output_buffer {
+	my ($self, $text) = @_;
+	$self->{write_buffer} .= $text;
 }
 
 sub result {
@@ -61,7 +72,7 @@ sub close {
 sub produce_gpc {
 	my ($self, $gpc) = @_;
 	$gpc->{socket} = "$self->{socket}";
-	$self->{server}->schedule_gpc($gpc)
+	$self->{server}->schedule_gpc($gpc);
 }
 
 sub respawn_as {

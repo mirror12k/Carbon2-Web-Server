@@ -209,7 +209,8 @@ sub send_frame {
 
 	$data .= $frame->{data};
 
-	$self->{socket}->print($data);
+	$self->write_to_output_buffer($data);
+	# $self->{socket}->print($data);
 }
 
 sub format_gpc {

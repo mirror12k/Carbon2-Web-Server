@@ -68,6 +68,7 @@ sub connection_processing_workers { @_ > 1 ? $_[0]{carbon_server__connection_pro
 sub request_processing_workers { @_ > 1 ? $_[0]{carbon_server__request_processing_workers} = $_[1] : $_[0]{carbon_server__request_processing_workers} }
 
 sub processing_selector { @_ > 1 ? $_[0]{carbon_server__processing_selector} = $_[1] : $_[0]{carbon_server__processing_selector} }
+sub async_processor { @_ > 1 ? $_[0]{carbon_server__async_processor} = $_[1] : $_[0]{carbon_server__async_processor} }
 sub active_connections { @_ > 1 ? $_[0]{carbon_server__active_connections} = $_[1] : $_[0]{carbon_server__active_connections} }
 
 
@@ -192,20 +193,19 @@ sub cleanup {
 sub start_connection_thread {
 	my ($self, $queue) = @_;
 
-	$self->warn(1, "start_connection_thread");
+	$self->warn(1, "[" . Thread::Pool->self . "] starting connection thread");
 
 	$self->processing_selector(IO::Select->new);
 	$self->active_connections({});
 	$self->scheduled_jobs({});
+	$self->async_processor(Carbon::AsyncProcessor->new(delay => 50));
 
-	# $self->server_running(1);
 
-	my $processor = Carbon::AsyncProcessor->new(delay => 50);
 
-	$processor->schedule_job(sub {
+	$self->async_processor->schedule_job(sub {
 			# $self->warn(1, "checking socket queue"); # DEBUG PROCESSOR LOOP
 			if (not defined $queue->pending) {
-				$processor->running(0);
+				$self->async_processor->running(0);
 			} elsif ($self->processing_selector->count == 0) {
 				my $instruction = $queue->dequeue();
 				if (defined $instruction) {
@@ -234,7 +234,7 @@ sub start_connection_thread {
 			}
 		}, 1);
 
-	$processor->schedule_job(sub {
+	$self->async_processor->schedule_job(sub {
 			# $self->warn(1, "reading from awaiting sockets"); # DEBUG PROCESSOR LOOP
 			foreach my $socket ($self->processing_selector->can_read(0)) {
 				my $connection = $self->active_connections->{"$socket"};
@@ -242,14 +242,14 @@ sub start_connection_thread {
 			}
 		}, 1);
 
-	$processor->schedule_job(sub {
+	$self->async_processor->schedule_job(sub {
 			# $self->warn(1, "checking processing results"); # DEBUG PROCESSOR LOOP
 			if (keys %{$self->scheduled_jobs} > 0) {
 				my @jobids = $self->processing_thread_pool->results;
 				foreach my $jobid ($self->processing_thread_pool->results) {
 					if (exists $self->scheduled_jobs->{$jobid}) {
 						delete $self->scheduled_jobs->{$jobid};
-						$self->warn(1, "[" . Thread::Pool->self . "]: got result from job $jobid"); # DEBUG JOBS
+						# $self->warn(1, "[" . Thread::Pool->self . "]: got result from job $jobid"); # DEBUG JOBS
 						my ($socket, @results) = $self->processing_thread_pool->result($jobid);
 						# reclaim any socket whose job has completed
 						# say "job [$jobid] completed!"; # JOBS DEBUG
@@ -261,7 +261,15 @@ sub start_connection_thread {
 			}
 		}, 1);
 
-	$processor->process_loop;
+	$self->async_processor->schedule_job(sub {
+			# $self->warn(1, "writing to awaiting sockets"); # DEBUG PROCESSOR LOOP
+			foreach my $socket ($self->processing_selector->can_write(0)) {
+				my $connection = $self->active_connections->{"$socket"};
+				$connection->write_buffered;
+			}
+		}, 1);
+
+	$self->async_processor->process_loop;
 }
 
 sub recast_connection {
@@ -288,11 +296,17 @@ sub remove_connection {
 	delete $self->active_connections->{"$connection_socket"};
 }
 
+sub schedule_async_job {
+	my ($self, $callback, $infinite) = @_;
+	
+	$self->async_processor->schedule_job($callback, $infinite);
+}
+
 sub schedule_gpc {
 	my ($self, $gpc) = @_;
 	# we must read the jobid, otherwise Thread::Pool will think that we don't want the results
 	my $jobid = $self->processing_thread_pool->job($gpc);
-	$self->warn(1, "[" . Thread::Pool->self . "]: scheduled job $jobid"); # DEBUG JOBS
+	# $self->warn(1, "[" . Thread::Pool->self . "]: scheduled job $jobid"); # DEBUG JOBS
 	$self->scheduled_jobs->{$jobid} = 1;
 }
 
@@ -300,7 +314,7 @@ sub init_processing_thread {
 	my ($self) = @_;
 	my %initialized_processors;
 	for my $processor (values %{$self->processors}) {
-		$self->warn(1, "initializing processor [" . $processor . "]");
+		$self->warn(1, "[" . Thread::Pool->self . "] initializing processor [" . $processor . "]");
 		$processor->init_thread unless exists $initialized_processors{"$processor"};
 		$initialized_processors{"$processor"} = 1;
 	}
