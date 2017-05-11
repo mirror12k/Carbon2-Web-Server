@@ -24,7 +24,7 @@ my $svr = Carbon2->new(
 	],
 	processors => {
 		'http:' => Carbon::HTTP::StorageServer->new
-			->route_storage('/' => 'store', permission => 'permission.json')
+			->route_storage('/' => 'store', permission => 'permission.json', jail_users => 1)
 	},
 );
 

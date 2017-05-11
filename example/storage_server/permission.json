@@ -1,5 +1,5 @@
 {
-	"1234": { "read": 1, "write": 1 },
-	"5678": { "read": 1, "write": 1 },
+	"1234": { "key": "1234567654321", "read": 1, "write": 1 },
+	"5678": { "key": "asdfasdfasdf", "read": 1, "write": 1 },
 	"anon": { "read": 1 }
 }

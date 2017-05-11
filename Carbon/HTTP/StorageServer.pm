@@ -16,12 +16,23 @@ use JSON;
 
 # a generic RESTful file storage server
 
+# compare equal sized strings in constant time
+sub constant_compare_strings {
+	my ($a, $b) = @_;
+	return 0 unless length $a == length $b;
+	my $x = $a ^ $b;
+	my $diff = 0;
+	foreach my $c (split '', $x) {
+		$diff += ord $c;
+	}
+
+	return $diff == 0
+}
+
+
+
 sub route_storage {
 	my ($self, $path, $directory, %opts) = @_;
-
-	my $permissions = defined $opts{permission}
-			? $self->load_permissions($opts{permission})
-			: { anon => { read => 1, write => 1 } };
 
 	return $self->route(qr/$path.*/ => sub {
 		my ($self, $req) = @_;
@@ -32,11 +43,18 @@ sub route_storage {
 		$loc = join '/', grep $_ !~ /\.\./, grep $_ ne '', split '/', $loc;
 		$loc = "$directory/$loc";
 
+		my $permissions = defined $opts{permission}
+				? $self->load_permissions($opts{permission})
+				: { anon => { read => 1, write => 1 } };
+
 		my $user = $req->uri->query_form->{user} // 'anon';
+		my $key = $req->uri->query_form->{key} // '';
 
 		my $res;
 		if ($req->method eq 'GET') {
-			if (exists $permissions->{$user} and $permissions->{$user}{read}) {
+			if (exists $permissions->{$user}
+					and ($user eq 'anon' or constant_compare_strings($permissions->{$user}{key}, $key))
+					and $permissions->{$user}{read}) {
 				$res = $self->get_file($loc);
 			} else {
 				$res = Carbon::HTTP::Response->new('403', 'Forbidden');
@@ -44,7 +62,10 @@ sub route_storage {
 				$res->header('content-length' => length $res->content);
 			}
 		} elsif ($req->method eq 'PUT') {
-			if (exists $permissions->{$user} and $permissions->{$user}{write}) {
+			if (exists $permissions->{$user}
+					and ($user eq 'anon' or constant_compare_strings($permissions->{$user}{key}, $key))
+					and (not $opts{jail_users} or "$directory/$user/" eq substr $loc, 0, length "$directory/$user/")
+					and $permissions->{$user}{write}) {
 				$res = $self->put_file($loc, $req->content);
 			} else {
 				$res = Carbon::HTTP::Response->new('403', 'Forbidden');
@@ -52,7 +73,10 @@ sub route_storage {
 				$res->header('content-length' => length $res->content);
 			}
 		} elsif ($req->method eq 'DELETE') {
-			if (exists $permissions->{$user} and $permissions->{$user}{write}) {
+			if (exists $permissions->{$user}
+					and ($user eq 'anon' or constant_compare_strings($permissions->{$user}{key}, $key))
+					and (not $opts{jail_users} or "$directory/$user/" eq substr $loc, 0, length "$directory/$user/")
+					and $permissions->{$user}{write}) {
 				$res = $self->delete_file($loc);
 			} else {
 				$res = Carbon::HTTP::Response->new('403', 'Forbidden');
