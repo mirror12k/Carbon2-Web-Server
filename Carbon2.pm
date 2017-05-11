@@ -13,6 +13,7 @@ use Thread::Queue;
 use Time::HiRes 'usleep';
 
 use Carbon::URI;
+use Carbon::AsyncProcessor;
 
 use Data::Dumper;
 
@@ -194,78 +195,73 @@ sub start_connection_thread {
 	$self->warn(1, "start_connection_thread");
 
 	$self->processing_selector(IO::Select->new);
-	# my $selector = IO::Select->new;
 	$self->active_connections({});
-	# my %socket_connections;
 	$self->scheduled_jobs({});
 
-	$self->server_running(1);
+	# $self->server_running(1);
 
-	while ($self->server_running) {
-		# $self->warn(1, "debug in server loop");
+	my $processor = Carbon::AsyncProcessor->new(delay => 50);
 
-		if (not defined $queue->pending) {
-			$self->server_running(0);
-		} elsif ($self->processing_selector->count) {
-			foreach my $socket ($self->processing_selector->can_read(10 / 1000)) {
-				my $connection = $self->active_connections->{"$socket"};
-				# my $status = 
-				$connection->read_buffered;
-				# if ($status) {
-				# 	$self->remove_connection($socket);
-				# 	# $self->warn(1, "force closing $socket due to bad status");
-				# 	# close $socket;
-				# 	# $self->processing_selector->remove($socket);
-				# # } else {
-				# # 	while (my $gpc = $connection->produce_gpc) {
-				# # 		# say "got gpc from connection: ", Dumper $gpc;
-				# # 		$gpc->{socket} = "$socket";
-				# # 		# we must read the jobid, otherwise Thread::Pool will think that we don't want the results
-				# # 		my $jobid = $self->processing_thread_pool->job($gpc);
-				# # 	}
-				# }
-			}
+	$processor->schedule_job(sub {
+			# $self->warn(1, "checking socket queue"); # DEBUG PROCESSOR LOOP
+			if (not defined $queue->pending) {
+				$processor->running(0);
+			} elsif ($self->processing_selector->count == 0) {
+				my $instruction = $queue->dequeue();
+				if (defined $instruction) {
+					my ($parent_socket, $socket) = @$instruction;
+					my $receiver = $self->receiver_map->{$parent_socket};
 
-			my @jobids = $self->processing_thread_pool->results;
-			foreach my $jobid ($self->processing_thread_pool->results) {
-				if (exists $self->scheduled_jobs->{$jobid}) {
-					delete $self->scheduled_jobs->{$jobid};
-					$self->warn(1, "[" . Thread::Pool->self . "]: got result from job $jobid"); # DEBUG JOBS
-					my ($socket, @results) = $self->processing_thread_pool->result($jobid);
-					# reclaim any socket whose job has completed
-					# say "job [$jobid] completed!"; # JOBS DEBUG
-					my $connection = $self->active_connections->{"$socket"};
-					# TODO: close connection if results are empty
-					$connection->result(@results);
+					$socket = $receiver->restore_socket($socket);
+					my $connection = $receiver->start_connection($self, $socket);
+
+					$self->add_connection($socket, $connection);
+					# $self->active_connections->{"$socket"} = $connection;
+					# $self->processing_selector->add($socket);
+				}
+			} else {
+				while (my $instruction = $queue->dequeue_nb()) {
+					my ($parent_socket, $socket) = @$instruction;
+					my $receiver = $self->receiver_map->{$parent_socket};
+
+					$socket = $receiver->restore_socket($socket);
+					my $connection = $receiver->start_connection($self, $socket);
+
+					$self->add_connection($socket, $connection);
+					# $self->active_connections->{"$socket"} = $connection;
+					# $self->processing_selector->add($socket);
 				}
 			}
+		}, 1);
 
-			while (my $instruction = $queue->dequeue_nb()) {
-				my ($parent_socket, $socket) = @$instruction;
-				my $receiver = $self->receiver_map->{$parent_socket};
-
-				$socket = $receiver->restore_socket($socket);
-				my $connection = $receiver->start_connection($self, $socket);
-
-				$self->add_connection($socket, $connection);
-				# $self->active_connections->{"$socket"} = $connection;
-				# $self->processing_selector->add($socket);
+	$processor->schedule_job(sub {
+			# $self->warn(1, "reading from awaiting sockets"); # DEBUG PROCESSOR LOOP
+			foreach my $socket ($self->processing_selector->can_read(0)) {
+				my $connection = $self->active_connections->{"$socket"};
+				$connection->read_buffered;
 			}
-		} else {
-			my $instruction = $queue->dequeue();
-			if (defined $instruction) {
-				my ($parent_socket, $socket) = @$instruction;
-				my $receiver = $self->receiver_map->{$parent_socket};
+		}, 1);
 
-				$socket = $receiver->restore_socket($socket);
-				my $connection = $receiver->start_connection($self, $socket);
-
-				$self->add_connection($socket, $connection);
-				# $self->active_connections->{"$socket"} = $connection;
-				# $self->processing_selector->add($socket);
+	$processor->schedule_job(sub {
+			# $self->warn(1, "checking processing results"); # DEBUG PROCESSOR LOOP
+			if (keys %{$self->scheduled_jobs} > 0) {
+				my @jobids = $self->processing_thread_pool->results;
+				foreach my $jobid ($self->processing_thread_pool->results) {
+					if (exists $self->scheduled_jobs->{$jobid}) {
+						delete $self->scheduled_jobs->{$jobid};
+						$self->warn(1, "[" . Thread::Pool->self . "]: got result from job $jobid"); # DEBUG JOBS
+						my ($socket, @results) = $self->processing_thread_pool->result($jobid);
+						# reclaim any socket whose job has completed
+						# say "job [$jobid] completed!"; # JOBS DEBUG
+						my $connection = $self->active_connections->{"$socket"};
+						# TODO: close connection if results are empty
+						$connection->result(@results);
+					}
+				}
 			}
-		}
-	}
+		}, 1);
+
+	$processor->process_loop;
 }
 
 sub recast_connection {
