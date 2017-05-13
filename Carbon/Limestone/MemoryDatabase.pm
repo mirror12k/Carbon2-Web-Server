@@ -8,6 +8,8 @@ use File::Path qw/ make_path remove_tree /;
 use File::Slurper qw/ read_binary write_binary read_dir /;
 use JSON;
 
+use Carbon::Limestone::Response;
+
 
 
 
@@ -40,6 +42,32 @@ sub create {
 	$self->{collections} = {};
 
 	return $self
+}
+
+
+sub execute_query {
+	my ($self, $query) = @_;
+
+	if ($query->{type} eq 'push') {
+		push @{$self->{collections}{$query->{collection}}}, $query->{data};
+		return Carbon::Limestone::Response->new(status => 'success');
+
+	} elsif ($query->{type} eq 'delete') {
+		if (exists $self->{collections}{$query->{collection}}) {
+			delete $self->{collections}{$query->{collection}};
+		}
+
+		return Carbon::Limestone::Response->new(status => 'success');
+
+	} elsif ($query->{type} eq 'get') {
+		return Carbon::Limestone::Response->new(status => 'success',
+				data => ($self->{collections}{$query->{collection}} // []));
+
+	} elsif ($query->{type} eq 'count') {
+		return Carbon::Limestone::Response->new(status => 'success',
+				data => scalar @{$self->{collections}{$query->{collection}}});
+
+	}
 }
 
 

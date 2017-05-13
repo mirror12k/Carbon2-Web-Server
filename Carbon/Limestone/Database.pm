@@ -49,6 +49,12 @@ sub delete {
 	remove_tree($path);
 }
 
+sub execute_query {
+	my ($self, $query) = @_;
+	die "unimplemented execute_query in $self";
+}
+
+
 
 
 
