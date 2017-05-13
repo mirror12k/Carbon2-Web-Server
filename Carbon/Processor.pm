@@ -24,12 +24,6 @@ sub execute_gpc {
 sub init_thread {
 	my ($self, $server) = @_;
 	$self->{server} = $server;
-
-	foreach my $route (@{$self->{routes}}) {
-		foreach my $sub_router (grep ref $_ ne 'CODE', @{$route->{callbacks}}) {
-			$sub_router->init_thread($server);
-		}
-	}
 }
 
 1;
