@@ -35,9 +35,15 @@ sub read_buffered {
 		if (defined $self->{request_length} and length $self->{buffer} >= $self->{request_length}) {
 			my $data = substr $self->{buffer}, 0, $self->{request_length};
 			$self->{buffer} = substr $self->{buffer}, $self->{request_length};
-			$data = decode_json(gunzip($data));
+			# say "got length: $self->{request_length} vs ", length $data;
+			# say "got ", unpack 'H*', $data;
+			$data = gunzip($data);
+			# say "//$data//";
+			$data = decode_json($data);
+			# say "debug: ", Dumper $data;
 
 			$self->on_request($data);
+			$self->{request_length} = undef;
 		} else {
 			last;
 		}
@@ -50,12 +56,12 @@ sub result {
 	my ($self, $res) = @_;
 	$res = $res // Carbon::Limestone::Response->new(status => 'server_error', server_error => 'internal server error');
 	
-	$self->send_response($res);
+	$self->send_response({ %$res });
 }
 
 sub send_response {
 	my ($self, $res) = @_;
-	
+
 	my $data = gzip(encode_json($res));
 	my $data_length = pack 'N', length $data;
 
@@ -72,7 +78,7 @@ sub format_gpc {
 
 	my $uri = Carbon::URI->parse($req->{path});
 	$uri->protocol('limestone:');
-	return { uri => $uri, data => Carbon::Limestone::Query->new(%{$req->{query}}) }
+	return { uri => $uri, data => Carbon::Limestone::Query->new(%{$req->{data}}) }
 }
 
 1;

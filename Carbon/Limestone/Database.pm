@@ -38,7 +38,7 @@ sub store_to_filesystem {
 sub lock_all_edits {
 	my ($self, $callback) = @_;
 	lock($self);
-	$callback->();
+	return $callback->();
 }
 
 sub create {

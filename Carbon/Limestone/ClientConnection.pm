@@ -48,9 +48,14 @@ sub connect {
 sub send_request {
 	my ($self, $req) = @_;
 	
-	my $data = gzip(encode_json($req));
+	# say "debug: ", Dumper $req;
+	my $data = encode_json $req;
+	# say "//$data//";
+	$data = gzip($data);
 	my $data_length = pack 'N', length $data;
 
+	# say "sending ", length $data;
+	# say "sending ", unpack 'H*', $data;
 	$self->{socket}->print("$data_length$data");
 }
 
@@ -73,7 +78,7 @@ sub recieve_response {
 sub query {
 	my ($self, $path, $query) = @_;
 
-	$self->send_request({ path => $path, data => $query });
+	$self->send_request({ path => $path, data => { %$query } });
 	return $self->recieve_response
 }
 

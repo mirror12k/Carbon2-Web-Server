@@ -55,29 +55,46 @@ sub create {
 	return $self
 }
 
-
 sub execute_query {
 	my ($self, $query) = @_;
 
 	if ($query->{type} eq 'push') {
-		return Carbon::Limestone::Response->new(status => 'success',
-			data => (push @{$self->{collections}{$query->{collection}}}, map shared_clone($_), @{$query->{data}}));
+		return $self->lock_all_edits(sub {
+			$self->{collections}{$query->{collection}} //= shared_clone([]);
+
+			return Carbon::Limestone::Response->new(status => 'success',
+				data => (push @{$self->{collections}{$query->{collection}}}, map shared_clone($_), @{$query->{data}}));
+		});
 
 	} elsif ($query->{type} eq 'delete') {
-		if (exists $self->{collections}{$query->{collection}}) {
-			delete $self->{collections}{$query->{collection}};
-		}
+		return $self->lock_all_edits(sub {
+			if (exists $self->{collections}{$query->{collection}}) {
+				delete $self->{collections}{$query->{collection}};
+			}
 
-		return Carbon::Limestone::Response->new(status => 'success');
+			return Carbon::Limestone::Response->new(status => 'success');
+		});
 
 	} elsif ($query->{type} eq 'get') {
 		return Carbon::Limestone::Response->new(status => 'success',
-				data => ($self->{collections}{$query->{collection}} // []));
+				data => unshared_clone($self->{collections}{$query->{collection}} // []));
 
 	} elsif ($query->{type} eq 'count') {
 		return Carbon::Limestone::Response->new(status => 'success',
 				data => scalar @{$self->{collections}{$query->{collection}}});
 
+	}
+}
+
+sub unshared_clone {
+	my ($data) = @_;
+
+	if (ref $data eq 'HASH') {
+		return { map $_ => unshared_clone($data->{$_}), keys %$data }
+	} elsif (ref $data eq 'ARRAY') {
+		return [ map unshared_clone($_), @$data ]
+	} else {
+		return $data
 	}
 }
 

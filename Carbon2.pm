@@ -254,9 +254,10 @@ sub start_connection_thread {
 				my @jobids = $self->processing_thread_pool->results;
 				foreach my $jobid ($self->processing_thread_pool->results) {
 					if (exists $self->scheduled_jobs->{$jobid}) {
+						my $socket = $self->scheduled_jobs->{$jobid};
 						delete $self->scheduled_jobs->{$jobid};
 						# $self->warn(1, ": got result from job $jobid"); # DEBUG JOBS
-						my ($socket, $async_commands, @results) = $self->processing_thread_pool->result($jobid);
+						my ($async_commands, @results) = $self->processing_thread_pool->result($jobid);
 
 						# queue up any scheduled async jobs that the gpc produced
 						foreach my $command (@$async_commands) {
@@ -331,7 +332,7 @@ sub schedule_gpc {
 	# we must read the jobid, otherwise Thread::Pool will think that we don't want the results
 	my $jobid = $self->processing_thread_pool->job($gpc);
 	# $self->warn(1, ": scheduled job $jobid"); # DEBUG JOBS
-	$self->scheduled_jobs->{$jobid} = 1;
+	$self->scheduled_jobs->{$jobid} = $gpc->{socket};
 }
 
 sub init_processing_thread {
@@ -352,10 +353,10 @@ sub process_gpc {
 	my $uri = $gpc->{uri};
 	if (exists $self->processors->{$uri->protocol}) {
 		$self->warn(1, "processing gpc '" . $uri->as_string . "' with router [" . $self->processors->{$uri->protocol} . "]");
-		return $gpc->{socket}, $self->async_command_queue, $self->processors->{$uri->protocol}->execute_gpc($gpc)
+		return $self->async_command_queue, $self->processors->{$uri->protocol}->execute_gpc($gpc)
 	} else {
 		$self->warn(1, "no router found for protocol '" . $uri->protocol . "'");
-		return $gpc->{socket}, $self->async_command_queue
+		return $self->async_command_queue
 	}
 }
 

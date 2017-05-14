@@ -116,6 +116,7 @@ sub execute_gpc {
 	my $uri = $gpc->{uri};
 	my $req = $gpc->{data};
 
+	# $self->warn(1, "got request: ", Dumper $req);
 	$self->warn(1, "got $req->{method} request");
 	if ($req->{method} eq 'create') {
 		return Carbon::Limestone::Response->new(status => 'error', error => 'database already exists')
@@ -172,6 +173,7 @@ sub execute_gpc {
 sub main {
 	use Carbon2;
 	use Carbon::TCPReceiver;
+	use Carbon::Limestone::ServerConnection;
 
 	my $limestone = Carbon::Limestone->new(debug => 1);
 
