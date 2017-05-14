@@ -148,7 +148,7 @@ sub execute_gpc {
 		return Carbon::Limestone::Response->new(status => 'success');
 
 	} elsif ($req->{method} eq 'query') {
-		return Carbon::Limestone::Response->new(status => 'error', error => 'database already exists')
+		return Carbon::Limestone::Response->new(status => 'error', error => 'database doesnt exist')
 				unless exists $self->databases->{$uri->path};
 		return Carbon::Limestone::Response->new(status => 'error', error => 'incorrect database type')
 				unless exists $req->{database_type} and $self->databases->{$uri->path}->database_type;

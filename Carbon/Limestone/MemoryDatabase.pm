@@ -4,6 +4,7 @@ use strict;
 use warnings;
 
 use feature 'say';
+
 use File::Path qw/ make_path remove_tree /;
 use File::Slurper qw/ read_binary write_binary read_dir /;
 use JSON;
@@ -49,8 +50,8 @@ sub execute_query {
 	my ($self, $query) = @_;
 
 	if ($query->{type} eq 'push') {
-		push @{$self->{collections}{$query->{collection}}}, $query->{data};
-		return Carbon::Limestone::Response->new(status => 'success');
+		return Carbon::Limestone::Response->new(status => 'success',
+			data => (push @{$self->{collections}{$query->{collection}}}, @{$query->{data}}));
 
 	} elsif ($query->{type} eq 'delete') {
 		if (exists $self->{collections}{$query->{collection}}) {
