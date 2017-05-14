@@ -50,6 +50,12 @@ sub result {
 	my ($self, $res) = @_;
 	$res = $res // Carbon::Limestone::Response->new(status => 'server_error', server_error => 'internal server error');
 	
+	$self->send_response($res);
+}
+
+sub send_response {
+	my ($self, $res) = @_;
+	
 	my $data = gzip(encode_json($res));
 	my $data_length = pack 'N', length $data;
 

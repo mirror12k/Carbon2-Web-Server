@@ -79,13 +79,13 @@ sub active_connections { @_ > 1 ? $_[0]{carbon_server__active_connections} = $_[
 sub warn {
 	my ($self, $level, @args) = @_;
 	if ($self->{debug} and $self->{debug} <= $level) {
-		$self->onwarn->("[". (caller)[0] ."] ", @args, "\n");
+		$self->onwarn->("[". (caller)[0] ."][" . (Thread::Pool->self // 'main') . "] ", @args, "\n");
 	}
 }
 
 sub die {
 	my ($self, @args) = @_;
-	$self->onerror->("[". (caller)[0] ."][$self] ", @args);
+	$self->onerror->("[". (caller)[0] ."][$self][" . (Thread::Pool->self // 'main') . "] ", @args, "\n");
 	CORE::die "returning from onerror is not allowed";
 }
 
@@ -194,7 +194,7 @@ sub cleanup {
 sub start_connection_thread {
 	my ($self, $queue) = @_;
 
-	$self->warn(1, "[" . Thread::Pool->self . "] starting connection thread");
+	$self->warn(1, "starting connection thread");
 
 	$self->processing_selector(IO::Select->new);
 	$self->active_connections({});
@@ -255,7 +255,7 @@ sub start_connection_thread {
 				foreach my $jobid ($self->processing_thread_pool->results) {
 					if (exists $self->scheduled_jobs->{$jobid}) {
 						delete $self->scheduled_jobs->{$jobid};
-						# $self->warn(1, "[" . Thread::Pool->self . "]: got result from job $jobid"); # DEBUG JOBS
+						# $self->warn(1, ": got result from job $jobid"); # DEBUG JOBS
 						my ($socket, $async_commands, @results) = $self->processing_thread_pool->result($jobid);
 
 						# queue up any scheduled async jobs that the gpc produced
@@ -330,7 +330,7 @@ sub schedule_gpc {
 	my ($self, $gpc) = @_;
 	# we must read the jobid, otherwise Thread::Pool will think that we don't want the results
 	my $jobid = $self->processing_thread_pool->job($gpc);
-	# $self->warn(1, "[" . Thread::Pool->self . "]: scheduled job $jobid"); # DEBUG JOBS
+	# $self->warn(1, ": scheduled job $jobid"); # DEBUG JOBS
 	$self->scheduled_jobs->{$jobid} = 1;
 }
 
@@ -338,7 +338,7 @@ sub init_processing_thread {
 	my ($self) = @_;
 	my %initialized_processors;
 	for my $processor (values %{$self->processors}) {
-		$self->warn(1, "[" . Thread::Pool->self . "] initializing processor [" . $processor . "]");
+		$self->warn(1, "initializing processor [" . $processor . "]");
 		$processor->init_thread($self) unless exists $initialized_processors{"$processor"};
 		$initialized_processors{"$processor"} = 1;
 	}

@@ -7,6 +7,7 @@ use warnings;
 
 use feature 'say';
 
+use threads;
 use threads::shared 'share';
 use File::Path qw/ make_path remove_tree /;
 use File::Slurper qw/ read_binary write_binary read_dir /;
@@ -39,11 +40,10 @@ sub new ($%) {
 		$self->load_databases;
 	} else {
 		make_path($self->databases_path);
-		$self->config({
+		$self->config(shared_clone({
 			databases => {},
-		});
+		}));
 	}
-	share($self->config);
 
 	return $self
 }
@@ -51,7 +51,7 @@ sub new ($%) {
 sub warn {
 	my ($self, $level, @args) = @_;
 	if ($self->{debug} and $self->{debug} <= $level) {
-		$self->onwarn->("[". (caller)[0] ."] ", @args, "\n");
+		$self->onwarn->("[". (caller)[0] ."][" . (Thread::Pool->self // 'main') . "] ", @args, "\n");
 	}
 }
 
@@ -71,9 +71,9 @@ sub databases_path { @_ > 1 ? $_[0]{limestone__databases_path} = $_[1] : $_[0]{l
 
 sub load_config {
 	my ($self) = @_;
-
 	$self->config(decode_json(read_binary($self->databases_path . '/__limestone_db.json')));
-	share($self->config);
+	$self->config(shared_clone($self->config));
+	$self->config->{databases} //= shared_clone({});
 }
 
 sub load_databases {
@@ -84,7 +84,7 @@ sub load_databases {
 	foreach my $database (keys %{$self->config->{databases}}) {
 		my $class = $self->config->{databases}{$database}{database_type};
 		my $path = $self->databases_path . $database;
-		$self->warn(1, "loading $class database $path");
+		$self->warn(1, "loading $class database $database");
 		$self->databases->{$database} = $class->new($path);
 		$self->databases->{$database}->load_from_filesystem;
 	}
@@ -100,7 +100,8 @@ sub store_databases {
 
 	$self->warn(1, "storing databases to " . $self->databases_path);
 	$self->store_config;
-	foreach my $database (keys %{$self->config->{databases}}) {
+	my $config = $self->config;
+	foreach my $database (keys %{$config->{databases}}) {
 		my $class = $self->config->{databases}{$database}{database_type};
 		my $path = $self->databases_path . $database;
 		$self->warn(1, "storing $class database $path");
@@ -123,9 +124,9 @@ sub execute_gpc {
 				unless exists $req->{database_type};
 
 		$self->databases->{$uri->path} = $req->{database_type}->create($self->databases_path . $uri->path);
-		$self->config->{databases}{$uri->path} = {
+		$self->config->{databases}{$uri->path} = shared_clone({
 			database_type => $req->{database_type},
-		};
+		});
 
 		$self->store_config;
 
@@ -168,5 +169,28 @@ sub execute_gpc {
 
 
 
+sub main {
+	use Carbon2;
+	use Carbon::TCPReceiver;
 
-1;
+	my $limestone = Carbon::Limestone->new(debug => 1);
+
+	my $svr = Carbon2->new(
+		debug => 1,
+		receivers => [
+			Carbon::TCPReceiver->new(2047 => 'Carbon::Limestone::ServerConnection'),
+		],
+		processors => {
+			'limestone:' => $limestone,
+		},
+	);
+	$SIG{INT} = sub {
+		$svr->shutdown;
+		$limestone->store_databases;
+	};
+
+	$svr->start;
+}
+
+
+caller or main(@ARGV);

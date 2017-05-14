@@ -2,7 +2,10 @@ package Carbon::Limestone::Database;
 use strict;
 use warnings;
 
+use threads;
+use threads::shared;
 use feature 'say';
+
 use File::Path qw/ make_path remove_tree /;
 
 
@@ -10,6 +13,7 @@ use File::Path qw/ make_path remove_tree /;
 sub new {
 	my ($class, $path) = @_;
 	my $self = bless {}, $class;
+	$self = share($self);
 
 	$self->path($path);
 

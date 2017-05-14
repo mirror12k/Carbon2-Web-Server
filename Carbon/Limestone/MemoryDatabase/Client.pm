@@ -27,7 +27,7 @@ sub request {
 	if (defined $self->{database_manager}) {
 		return $self->{database_manager}->execute_gpc({ uri => Carbon::URI->parse("$self->{database}"), data => $query });
 	} elsif (defined $self->{database_connection}) {
-		die "unimplemented database_connection";
+		return $self->{database_connection}->query($self->{database}, $query);
 	} else {
 		croak "no database_manager or database_connection configured";
 	}
