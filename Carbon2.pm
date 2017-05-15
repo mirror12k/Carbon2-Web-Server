@@ -129,15 +129,25 @@ sub start_thread_pool {
 			$self->warn(1, "processing thread died: $@") if $@;
 			return @ret
 		},
+		post => sub {
+			$self->warn(1, "closing processing thread");
+		}
 	}));
 
 	$self->connection_thread_pool(Thread::Pool->new({
 		workers => $self->connection_processing_workers,
 		pre => sub {
-			eval { $self->start_connection_thread($self->server_socket_queue); };
-			$self->warn(1, "connection thread died of $@") if $@;
+			$self->warn(1, "starting connection thread");
+			my $leave = 0;
+			do {
+				eval { $self->start_connection_thread($self->server_socket_queue); $leave = 1; };
+				$self->warn(1, "connection thread died of $@") if $@;
+			} until ($leave);
 		},
 		do => sub { say 'lol nope' },
+		post => sub {
+			$self->warn(1, "closing connection thread");
+		}
 	}));
 }
 
@@ -193,8 +203,6 @@ sub cleanup {
 
 sub start_connection_thread {
 	my ($self, $queue) = @_;
-
-	$self->warn(1, "starting connection thread");
 
 	$self->processing_selector(IO::Select->new);
 	$self->active_connections({});
