@@ -175,7 +175,7 @@ sub listen_accept_server_loop {
 	# while the server is running
 	while ($self->server_running) {
 		# say "in loop";
-		foreach my $socket ($self->socket_selector->can_read(500 / 1000)) {
+		foreach my $socket ($self->socket_selector->can_read) {
 			my $new_socket = $socket->accept;
 			$self->warn(1, "got connection $new_socket (" . fileno ($new_socket) . ")");
 			$new_socket->blocking(0); # set it to non-blocking
@@ -183,6 +183,7 @@ sub listen_accept_server_loop {
 			$socket_cache{"$new_socket"} = $new_socket;
 			# push @socket_cache, $new_socket;
 		}
+		# say "leaving loop";
 
 		# receive any sockets which are ready for garbage collection
 		while (defined (my $socket_id = $self->server_socket_back_queue->dequeue_nb)) {
@@ -220,6 +221,7 @@ sub start_connection_thread {
 
 
 	# TODO: reorganize this into one big IO::Select loop which will detect both read and write sockets and new sockets
+	# perhaps this could be done with an IO::Pipe sending a dummy byte to notify the sleeping threads that a socket is available
 	$self->async_processor->schedule_job(sub {
 			# $self->warn(1, "checking socket queue"); # DEBUG PROCESSOR LOOP
 			if (not defined $self->server_socket_queue->pending) {
