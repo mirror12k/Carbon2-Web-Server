@@ -7,6 +7,7 @@ use feature 'say';
 
 use Carp;
 
+use threads;
 use IO::Select;
 use Thread::Pool;
 use Thread::Queue;
@@ -57,6 +58,7 @@ sub server_running { @_ > 1 ? $_[0]{carbon_server__running} = $_[1] : $_[0]{carb
 
 sub socket_selector { @_ > 1 ? $_[0]{carbon_server__socket_selector} = $_[1] : $_[0]{carbon_server__socket_selector} }
 sub server_socket_queue { @_ > 1 ? $_[0]{carbon_server__server_socket_queue} = $_[1] : $_[0]{carbon_server__server_socket_queue} }
+sub server_socket_back_queue { @_ > 1 ? $_[0]{carbon_server__server_socket_back_queue} = $_[1] : $_[0]{carbon_server__server_socket_back_queue} }
 sub connection_thread_pool { @_ > 1 ? $_[0]{carbon_server__connection_thread_pool} = $_[1] : $_[0]{carbon_server__connection_thread_pool} }
 sub processing_thread_pool { @_ > 1 ? $_[0]{carbon_server__processing_thread_pool} = $_[1] : $_[0]{carbon_server__processing_thread_pool} }
 sub scheduled_jobs { @_ > 1 ? $_[0]{carbon_server__scheduled_jobs} = $_[1] : $_[0]{carbon_server__scheduled_jobs} }
@@ -117,6 +119,7 @@ sub start_thread_pool {
 	my ($self) = @_;
 
 	$self->server_socket_queue(Thread::Queue->new);
+	$self->server_socket_back_queue(Thread::Queue->new);
 
 	$self->processing_thread_pool(Thread::Pool->new({
 		workers => $self->request_processing_workers,
@@ -140,7 +143,7 @@ sub start_thread_pool {
 			$self->warn(1, "starting connection thread");
 			my $leave = 0;
 			do {
-				eval { $self->start_connection_thread($self->server_socket_queue); $leave = 1; };
+				eval { $self->start_connection_thread; $leave = 1; };
 				$self->warn(1, "connection thread died of $@") if $@;
 			} until ($leave);
 		},
@@ -168,16 +171,22 @@ sub start_server_sockets {
 sub listen_accept_server_loop {
 	my ($self) = @_;
 
-	my @socket_cache;
+	my %socket_cache;
 	# while the server is running
 	while ($self->server_running) {
 		# say "in loop";
 		foreach my $socket ($self->socket_selector->can_read(500 / 1000)) {
 			my $new_socket = $socket->accept;
-			# $self->warn(1, "got connection $new_socket");
+			$self->warn(1, "got connection $new_socket (" . fileno ($new_socket) . ")");
 			$new_socket->blocking(0); # set it to non-blocking
-			$self->server_socket_queue->enqueue([ "$socket", fileno $new_socket ]);
-			push @socket_cache, $new_socket;
+			$self->server_socket_queue->enqueue([ "$socket", "$new_socket", fileno $new_socket ]);
+			$socket_cache{"$new_socket"} = $new_socket;
+			# push @socket_cache, $new_socket;
+		}
+
+		# receive any sockets which are ready for garbage collection
+		while (defined (my $socket_id = $self->server_socket_back_queue->dequeue_nb)) {
+			delete $socket_cache{"$socket_id"};
 		}
 	}
 
@@ -202,7 +211,7 @@ sub cleanup {
 
 
 sub start_connection_thread {
-	my ($self, $queue) = @_;
+	my ($self) = @_;
 
 	$self->processing_selector(IO::Select->new);
 	$self->active_connections({});
@@ -210,40 +219,43 @@ sub start_connection_thread {
 	$self->async_processor(Carbon::AsyncProcessor->new(delay => 50));
 
 
-
+	# TODO: reorganize this into one big IO::Select loop which will detect both read and write sockets and new sockets
 	$self->async_processor->schedule_job(sub {
 			# $self->warn(1, "checking socket queue"); # DEBUG PROCESSOR LOOP
-			if (not defined $queue->pending) {
+			if (not defined $self->server_socket_queue->pending) {
+				# if pending is not defined, then the queue has been ended, signaling us to stop running
 				$self->async_processor->running(0);
-			} elsif ($self->processing_selector->count == 0) {
-				my $instruction = $queue->dequeue();
-				if (defined $instruction) {
-					my ($parent_socket, $socket) = @$instruction;
+			} else {
+				my $instruction;
+				if ($self->processing_selector->count == 0) {
+					# if we have no sockets to process, we can sleep sound until the next call to action
+					$instruction = $self->server_socket_queue->dequeue;
+				} else {
+					# otherwise quickly look for a socket
+					$instruction = $self->server_socket_queue->dequeue_nb;
+				}
+
+
+				while (defined $instruction) {
+					my ($parent_socket, $socket_id, $socket_no) = @$instruction;
+
+					# reinflate the socket from it's fileno
 					my $receiver = $self->receiver_map->{$parent_socket};
+					my $socket = $receiver->restore_socket($socket_no);
+					# notify the listen-accept loop that we have received the socket and that it can safely garbage collect it
+					$self->server_socket_back_queue->enqueue($socket_id);
 
-					$socket = $receiver->restore_socket($socket);
+					# start the connection
 					my $connection = $receiver->start_connection($self, $socket);
-
 					$self->add_connection($socket, $connection);
-					# $self->active_connections->{"$socket"} = $connection;
-					# $self->processing_selector->add($socket);
+
+					# look for a second queued socket
+					$instruction = $self->server_socket_queue->dequeue_nb;
 
 					# $self->async_processor->schedule_delayed_job(sub {
 					# 	say "timeout for connection $connection";
 					# 	$connection->remove_self;
 					# }, 0.5)
-				}
-			} else {
-				while (my $instruction = $queue->dequeue_nb()) {
-					my ($parent_socket, $socket) = @$instruction;
-					my $receiver = $self->receiver_map->{$parent_socket};
-
-					$socket = $receiver->restore_socket($socket);
-					my $connection = $receiver->start_connection($self, $socket);
-
-					$self->add_connection($socket, $connection);
-					# $self->active_connections->{"$socket"} = $connection;
-					# $self->processing_selector->add($socket);
 				}
 			}
 		}, 1);
@@ -277,9 +289,13 @@ sub start_connection_thread {
 						}
 
 						# reclaim any socket whose job has completed
-						my $connection = $self->active_connections->{"$socket"};
-						# TODO: close connection if results are empty
-						$connection->result(@results);
+						if (exists $self->active_connections->{"$socket"}) {
+							my $connection = $self->active_connections->{"$socket"};
+							# if the connection is still alive
+							$connection->result(@results) if $connection;
+						} else {
+							$self->warn(1, "got result for $socket but connection is already closed");
+						}
 					}
 				}
 			}
