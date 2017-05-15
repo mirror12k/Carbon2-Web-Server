@@ -70,6 +70,7 @@ sub execute_query {
 		return $self->lock_all_edits(sub {
 			if (exists $self->{collections}{$query->{collection}}) {
 				delete $self->{collections}{$query->{collection}};
+				remove_tree($self->path . "/$query->{collection}");
 			}
 
 			return Carbon::Limestone::Response->new(status => 'success');
