@@ -21,7 +21,7 @@ sub new {
 }
 
 
-sub database_type { die "unimplemented database_type" }
+sub database_type { die "unimplemented database_type in $_[0]" }
 sub path { @_ > 1 ? $_[0]{path} = $_[1] : $_[0]{path} }
 
 
