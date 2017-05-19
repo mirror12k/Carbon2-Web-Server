@@ -8,9 +8,9 @@ use lib '../..';
 
 use Carbon2;
 use Carbon::TCPReceiver;
-use Carbon::WS::HTTPPromoter;
+use Carbon::WebSocket::HTTPPromoter;
 
-use Carbon::Router;
+use Carbon::WebSocket::Processor;
 
 
 
@@ -24,16 +24,42 @@ an example websocket server which recieves websocket connections at ws://localho
 my $svr = Carbon2->new(
 	debug => 1,
 	receivers => [
-		Carbon::TCPReceiver->new(2048 => 'Carbon::WS::HTTPPromoter'),
+		Carbon::TCPReceiver->new(2048 => 'Carbon::WebSocket::HTTPPromoter'),
 	],
 	processors => {
-		'ws:' => Carbon::Router->new
-			->route(qr!/! => sub {
-				my ($rtr, $text) = @_;
-				return [
-					{ type => 'text', text => "hello there: $text" }
-				]
-			}),
+		'ws:' => Carbon::WebSocket::Processor->new(paths => {
+			'/' => {
+				text => sub {
+					my ($con, $text) = @_;
+					if ($text ne '') {
+						$con->send("hello there: $text");
+						$con->send("i am: a big bear");
+					} else {
+						$con->close;
+					}
+				}
+			},
+			'/story' => {
+				text => sub {
+					my ($con, $text) = @_;
+					my $index = $con->session->{index} // 0;
+
+					my @story = (
+						'the quick brown fox',
+						'jumped',
+						'over the lazy dog',
+					);
+
+					if ($index <= $#story) {
+						$con->send("$story[$index]");
+					} else {
+						$con->close;
+					}
+
+					$con->session->{index} = $index + 1;
+				}
+			},
+		}),
 	},
 );
 

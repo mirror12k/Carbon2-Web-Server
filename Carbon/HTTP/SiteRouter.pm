@@ -16,7 +16,7 @@ sub new {
 	my ($class, %args) = @_;
 	my $self = $class->SUPER::new(%args);
 
-	$self->{sites} = $args->{sites};
+	$self->{sites} = $args{sites};
 
 	return $self
 }

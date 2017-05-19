@@ -1,4 +1,4 @@
-package Carbon::WS::HTTPPromoter;
+package Carbon::WebSocket::HTTPPromoter;
 use parent 'Carbon::HTTP::Connection';
 use strict;
 use warnings;
@@ -10,7 +10,7 @@ use Digest::SHA 'sha1';
 
 use Carbon::URI;
 use Carbon::HTTP::Response;
-use Carbon::WS::Connection;
+use Carbon::WebSocket::Connection;
 
 use Data::Dumper;
 
@@ -35,7 +35,7 @@ sub on_http_request {
 	$res->header('Sec-WebSocket-Accept' => $key);
 	$self->{socket}->print($res->as_string);
 
-	$self->respawn_as(Carbon::WS::Connection->new($self->{server}, $self->{socket}, $req->{uri}));
+	$self->respawn_as(Carbon::WebSocket::Connection->new($self->{server}, $self->{socket}, $req->{uri}));
 }
 
 sub remove_with_error {

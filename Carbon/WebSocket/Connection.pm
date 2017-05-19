@@ -1,4 +1,4 @@
-package Carbon::WS::Connection;
+package Carbon::WebSocket::Connection;
 use parent 'Carbon::Connection';
 use strict;
 use warnings;
@@ -17,6 +17,8 @@ sub new {
 	my ($class, $server, $socket, $uri) = @_;
 	my $self = $class->SUPER::new($server, $socket);
 	$self->{uri} = $uri;
+
+	$self->{session} = {};
 
 	return $self
 }
@@ -171,7 +173,11 @@ sub on_application_frame {
 		$frame->{data} = decode('UTF-8', $frame->{data}, Encode::FB_CROAK);
 	}
 	
-	$self->produce_gpc(format_gpc($frame->{data}, $self->{uri}));
+	$self->produce_gpc(format_gpc({
+		action => 'text',
+		data => $frame->{data},
+		session => $self->{session},
+	}, $self->{uri}));
 }
 
 sub send_frame {
@@ -222,13 +228,17 @@ sub format_gpc {
 }
 
 sub result {
-	my ($self, $commands) = @_;
+	my ($self, $res) = @_;
+
+	my $commands = $res->{commands};
+	$self->{session} = $res->{session};
 
 	foreach my $command (@$commands) {
 		if ($command->{type} eq 'close') {
 			$self->send_frame({
 				fin => 1,
 				opcode => 'close',
+				data => '',
 			});
 			$self->remove_self;
 		} elsif ($command->{type} eq 'text') {
