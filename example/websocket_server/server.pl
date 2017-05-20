@@ -40,6 +40,11 @@ my $svr = Carbon2->new(
 				}
 			},
 			'/story' => {
+				connected => sub {
+					my ($con) = @_;
+					$con->session->{index} = 0;
+					$con->send("hello dear reader, would you like a story?");
+				},
 				text => sub {
 					my ($con, $text) = @_;
 					my $index = $con->session->{index} // 0;
@@ -52,12 +57,21 @@ my $svr = Carbon2->new(
 
 					if ($index <= $#story) {
 						$con->send("$story[$index]");
+						$con->session->{index}++;
 					} else {
 						$con->close;
+						$con->session->{closed_by_server} = 1;
 					}
 
-					$con->session->{index} = $index + 1;
-				}
+				},
+				disconnected => sub {
+					my ($con) = @_;
+					if ($con->session->{closed_by_server}) {
+						say "the server closed the connection!";
+					} else {
+						say "the reader disconnected!";
+					}
+				},
 			},
 		}),
 	},
