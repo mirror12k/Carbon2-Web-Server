@@ -223,7 +223,7 @@ sub listen_accept_server_loop {
 		# say "in loop";
 		foreach my $socket ($self->socket_selector->can_read) {
 			my $new_socket = $socket->accept;
-			$self->warn(1, "got connection $new_socket (" . fileno ($new_socket) . ")");
+			$self->warn(1, "accepted socket $new_socket (fd " . fileno ($new_socket) . ")");
 			$new_socket->blocking(0); # set it to non-blocking
 
 			my $packet = package_packet(socket => "$socket", "$new_socket", fileno $new_socket);
@@ -318,7 +318,7 @@ sub connection_thread_loop {
 					$self->server_running(0);
 				} elsif ($instruction eq 'socket') {
 					my ($parent_socket, $socket_id, $socket_no) = @args;
-					$self->warn(1, "got instruction: $parent_socket, $socket_id, $socket_no");
+					# $self->warn(1, "got instruction: $parent_socket, $socket_id, $socket_no");
 					# reinflate the socket from it's fileno
 					my $receiver = $self->receiver_map->{$parent_socket};
 					my $socket = $receiver->restore_socket($socket_no);
@@ -350,7 +350,7 @@ sub connection_thread_loop {
 						if (exists $self->active_connections->{"$socket"}) {
 							my $connection = $self->active_connections->{"$socket"};
 							# if the connection is still alive
-							$connection->result(@results) if $connection;
+							$connection->on_result(@results) if $connection;
 
 							# $self->warn(1, "adding $handle to writable");
 							$self->connection_writable_selector->add($connection->{socket});
@@ -435,23 +435,30 @@ sub recast_connection {
 	my ($self, $connection_socket, $new_connection) = @_;
 
 	$self->warn(1, "recast socket $connection_socket as $new_connection");
+	$new_connection->on_connected;
 	$self->active_connections->{"$connection_socket"} = $new_connection;
 }
 
 sub add_connection {
 	my ($self, $connection_socket, $connection) = @_;
 
-	$self->warn(1, "new socket $connection_socket");
+	$self->warn(1, "new connection $connection");
+	# $self->warn(1, "new socket $connection_socket");
 	$self->connection_readable_selector->add($connection_socket);
 	$self->active_connections->{"$connection_socket"} = $connection;
+	$connection->on_connected;
 }
 
 sub remove_connection {
 	my ($self, $connection_socket) = @_;
 
-	$self->warn(1, "closing socket $connection_socket");
+	my $connection = $self->active_connections->{"$connection_socket"};
+
+	$self->warn(1, "closing connection $connection");
+	# $self->warn(1, "closing socket $connection_socket");
 	$self->connection_readable_selector->remove($connection_socket);
-	$self->active_connections->{"$connection_socket"}->close;
+	$connection->on_disconnected;
+	$connection->close;
 	delete $self->active_connections->{"$connection_socket"};
 }
 

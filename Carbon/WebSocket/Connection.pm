@@ -51,78 +51,102 @@ our %frame_opcode_numbers = (
 	pong => 0xA,
 );
 
-sub read_buffered {
+sub on_connected {
 	my ($self) = @_;
-	$self->SUPER::read_buffered;
+	$self->produce_gpc($self->format_gpc({
+		action => 'connected',
+	}));
+}
 
-	my $frame_found;
+sub on_disconnected {
+	my ($self) = @_;
+	$self->produce_gpc($self->format_gpc({
+		action => 'disconnected',
+	}));
+}
 
-	do {
-		$frame_found = 0;
-		# say "debug buffer: ", unpack 'H*', $self->{buffer};
-		unless (defined $self->{frame}) {
-			if (length $self->{buffer} >= 2) {
-				my ($flags, $length) = unpack 'CC', substr $self->{buffer}, 0, 2;
-				my $mask = $length >> 7;
-				$length &= 0x7f;
+sub on_data {
+	my ($self) = @_;
 
-				my $fin = $flags >> 7;
-				my $opcode = $flags & 0xf;
-				$opcode = $frame_opcode_types{$opcode};
-				$flags = ($flags >> 4) & 0x7;
+	while (my $frame = $self->parse_frame) {
+		$self->on_frame($frame);
+	}
+}
 
-				my $mask_key;
+sub parse_frame {
+	my ($self) = @_;
 
-				if ($length == 126 and length $self->{buffer} >= 4 + $mask * 4) {
-					$length = unpack 'n', substr $self->{buffer}, 2, 2;
+	my $frame = $self->{incomplete_frame};
+
+	# say "debug buffer: ", unpack 'H*', $self->{buffer};
+	unless (defined $frame) {
+		if (length $self->{buffer} >= 2) {
+			my ($flags, $length) = unpack 'CC', substr $self->{buffer}, 0, 2;
+			my $mask = $length >> 7;
+			$length &= 0x7f;
+
+			my $fin = $flags >> 7;
+			my $opcode = $flags & 0xf;
+			$opcode = $frame_opcode_types{$opcode};
+			$flags = ($flags >> 4) & 0x7;
+
+			my $mask_key;
+
+			if ($length == 126 and length $self->{buffer} >= 4 + $mask * 4) {
+				$length = unpack 'n', substr $self->{buffer}, 2, 2;
+				$self->{buffer} = substr $self->{buffer}, 4;
+				if ($mask) {
+					$mask_key = substr $self->{buffer}, 0, 4;
 					$self->{buffer} = substr $self->{buffer}, 4;
-					if ($mask) {
-						$mask_key = substr $self->{buffer}, 0, 4;
-						$self->{buffer} = substr $self->{buffer}, 4;
-					}
-					$self->{frame} = { fin => $fin, opcode => $opcode, flags => $flags, mask => $mask_key, length => $length };
-				} elsif ($length == 127 and length $self->{buffer} >= 10 + $mask * 4) {
-					$length = unpack 'Q>', substr $self->{buffer}, 2, 8;
-					$self->{buffer} = substr $self->{buffer}, 10;
-					if ($mask) {
-						$mask_key = substr $self->{buffer}, 0, 4;
-						$self->{buffer} = substr $self->{buffer}, 4;
-					}
-					$self->{frame} = { fin => $fin, opcode => $opcode, flags => $flags, mask => $mask_key, length => $length };
-				} elsif ($length < 126 and length $self->{buffer} >= 2 + $mask * 4) {
-					$self->{buffer} = substr $self->{buffer}, 2;
-					if ($mask) {
-						$mask_key = substr $self->{buffer}, 0, 4;
-						$self->{buffer} = substr $self->{buffer}, 4;
-					}
-					$self->{frame} = { fin => $fin, opcode => $opcode, flags => $flags, mask => $mask_key, length => $length };
 				}
-				# say "debug frame: ", Dumper $self->{frame};
-				# say "debug buffer: ", unpack 'H*', $self->{buffer};
-			}
-		}
-
-		# if it has completed the header transfer
-		if (defined $self->{frame}) {
-
-			if (length $self->{buffer} >= $self->{frame}{length}) {
-				$self->{frame}{data} = substr $self->{buffer}, 0, $self->{frame}{length};
-				$self->{buffer} = substr $self->{buffer}, $self->{frame}{length};
-
-				if (defined $self->{frame}{mask}) {
-					my $mask_length = length ($self->{frame}{data}) / 4 + 1;
-					my $mask = $self->{frame}{mask} x $mask_length;
-					$mask = substr $mask, 0, length $self->{frame}{data};
-					$self->{frame}{data} ^= $mask;
+				$frame = { fin => $fin, opcode => $opcode, flags => $flags, mask => $mask_key, length => $length };
+			} elsif ($length == 127 and length $self->{buffer} >= 10 + $mask * 4) {
+				$length = unpack 'Q>', substr $self->{buffer}, 2, 8;
+				$self->{buffer} = substr $self->{buffer}, 10;
+				if ($mask) {
+					$mask_key = substr $self->{buffer}, 0, 4;
+					$self->{buffer} = substr $self->{buffer}, 4;
 				}
-
-				$self->on_frame($self->{frame});
-				# my $req = $self->{frame}{data};
-				$self->{frame} = undef;
-				$frame_found = 1;
+				$frame = { fin => $fin, opcode => $opcode, flags => $flags, mask => $mask_key, length => $length };
+			} elsif ($length < 126 and length $self->{buffer} >= 2 + $mask * 4) {
+				$self->{buffer} = substr $self->{buffer}, 2;
+				if ($mask) {
+					$mask_key = substr $self->{buffer}, 0, 4;
+					$self->{buffer} = substr $self->{buffer}, 4;
+				}
+				$frame = { fin => $fin, opcode => $opcode, flags => $flags, mask => $mask_key, length => $length };
 			}
+			# say "debug frame: ", Dumper $frame;
+			# say "debug buffer: ", unpack 'H*', $self->{buffer};
 		}
-	} while ($frame_found);
+	}
+
+	# if it has completed the header transfer
+	if (defined $frame) {
+
+		if (length $self->{buffer} >= $frame->{length}) {
+			$frame->{data} = substr $self->{buffer}, 0, $frame->{length};
+			$self->{buffer} = substr $self->{buffer}, $frame->{length};
+
+			if (defined $frame->{mask}) {
+				my $mask_length = length ($frame->{data}) / 4 + 1;
+				my $mask = $frame->{mask} x $mask_length;
+				$mask = substr $mask, 0, length $frame->{data};
+				$frame->{data} ^= $mask;
+			}
+
+			$self->{incomplete_frame} = undef;
+			return $frame
+			# $self->on_frame($self->{frame});
+			# my $req = $self->{frame}{data};
+			# $self->{frame} = undef;
+			# $frame_found = 1;
+		} else {
+			$self->{incomplete_frame} = $frame;
+		}
+	}
+
+	return
 }
 
 sub on_frame {
@@ -173,16 +197,16 @@ sub on_application_frame {
 		$frame->{data} = decode('UTF-8', $frame->{data}, Encode::FB_CROAK);
 	}
 	
-	$self->produce_gpc(format_gpc({
+	$self->produce_gpc($self->format_gpc({
 		action => 'text',
 		data => $frame->{data},
-		session => $self->{session},
-	}, $self->{uri}));
+	}));
 }
 
 sub send_frame {
 	my ($self, $frame) = @_;
 
+	$frame->{data} //= '';
 	$frame->{opcode} = $frame_opcode_numbers{$frame->{opcode}} // croak "invalid frame opcode: $frame->{opcode}";
 	$frame->{length} = length $frame->{data};
 	$frame->{mask_bit} = $frame->{mask} ? 1 : 0;
@@ -220,14 +244,15 @@ sub send_frame {
 }
 
 sub format_gpc {
-	my ($req, $uri) = @_;
+	my ($self, $req) = @_;
+	my $uri = $self->{uri}->clone;
 
-	$uri = $uri->clone;
+	$req->{session} = $self->{session};
 	$uri->protocol('ws:');
 	return { uri => $uri, data => $req }
 }
 
-sub result {
+sub on_result {
 	my ($self, $res) = @_;
 
 	my $commands = $res->{commands};
@@ -238,7 +263,6 @@ sub result {
 			$self->send_frame({
 				fin => 1,
 				opcode => 'close',
-				data => '',
 			});
 			$self->remove_self;
 		} elsif ($command->{type} eq 'text') {

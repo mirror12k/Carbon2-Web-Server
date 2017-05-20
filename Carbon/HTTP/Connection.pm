@@ -12,10 +12,8 @@ use Data::Dumper;
 
 
 
-sub read_buffered {
+sub on_data {
 	my ($self) = @_;
-
-	$self->SUPER::read_buffered;
 
 	# if there is no request for this socket yet
 	unless (defined $self->{http_request}) {
@@ -57,7 +55,6 @@ sub read_buffered {
 			$self->on_http_request($req);
 		}
 	}
-	return
 }
 
 sub parse_http_header {
@@ -71,9 +68,14 @@ sub parse_http_header {
 	return $req
 }
 
-sub result {
+sub on_result {
 	my ($self, $response) = @_;
-	$response = $response // Carbon::HTTP::Response->new(404, 'Not Found', { 'content-length' => [ length 'Not Found' ] }, 'Not Found');
+	$response = $response // Carbon::HTTP::Response->new(
+		404,
+		'Not Found',
+		{ 'content-length' => [ length 'Not Found' ] },
+		'Not Found'
+	);
 	$self->write_to_output_buffer($response->as_string);
 	# $self->write_buffered($response->as_string);
 	# $self->{socket}->print($response->as_string);

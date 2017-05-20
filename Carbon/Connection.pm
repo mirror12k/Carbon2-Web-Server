@@ -23,14 +23,19 @@ sub read_buffered {
 	my $read = $self->{socket}->read($self->{buffer}, 4096 * 64, length $self->{buffer});
 	my $total = $read // 0;
 	while (defined $read and $read > 0) {
-		$read = $self->{socket}->read($self->{buffer}, 4096 * 16, length $self->{buffer});
+		$read = $self->{socket}->read($self->{buffer}, 4096 * 64, length $self->{buffer});
 		$total += $read if defined $read;
 		# say "error: $!" unless defined $read;
 		# say "debug read loop: $read" if defined $read;
 	}
 	# say "read: $total";
 	# $self->delete_socket($fh) if $total == 0;
-	$self->remove_self if $total == 0;
+	# $self->remove_self if $total == 0;
+	if ($total == 0) {
+		$self->remove_self;
+	} else {
+		$self->on_data;
+	}
 }
 
 sub write_buffered {
@@ -54,10 +59,19 @@ sub write_to_output_buffer {
 	$self->{write_buffer} .= $text;
 }
 
-sub result {
-	my ($self) = @_;
-	die "unimplemented ->result in $self";
+# required callback
+# triggers when a gpc completes and the results are passed back to the connection object
+sub on_result {
+	my ($self, @results) = @_;
+	die "unimplemented ->on_result in $self";
 }
+
+# callbacks usable by subclasses
+sub on_connected {}
+
+sub on_data {}
+
+sub on_disconnected {}
 
 sub remove_self {
 	my ($self) = @_;
