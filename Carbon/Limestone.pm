@@ -21,6 +21,7 @@ use Carbon::Limestone::Query;
 use Carbon::Limestone::Response;
 
 use Carbon::Limestone::MemoryDatabase;
+use Carbon::Limestone::FileDatabase;
 
 
 
@@ -140,8 +141,9 @@ sub execute_gpc {
 				unless exists $req->{database_type} and $self->databases->{$uri->path}->database_type;
 
 		my $database = $self->databases->{$uri->path};
-		$database->lock_all_edits;
-		$database->delete;
+		$database->lock_all_edits(sub {
+			$database->delete;
+		});
 		delete $self->databases->{$uri->path};
 		delete $self->config->{databases}{$uri->path};
 
