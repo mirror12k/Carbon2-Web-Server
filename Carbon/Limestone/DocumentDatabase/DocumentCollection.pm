@@ -124,6 +124,7 @@ sub read_chunk {
 
 sub read_next_chunk {
 	my ($self, $file_handle, $chunk) = @_;
+	# say "read_next_chunk: $chunk->{offset} + $chunk->{size}";
 	my $offset = $chunk->{offset} + $chunk->{size};
 
 	return $self->read_chunk($file_handle, $offset)
@@ -178,6 +179,7 @@ sub chop_chunk {
 	my %new_chunk;
 	$new_chunk{size} = $chunk->{size} - $size;
 	$new_chunk{offset} = $chunk->{offset} + $size;
+	$new_chunk{in_use} = $chunk->{in_use};
 
 	$chunk->{size} = $size;
 
@@ -202,10 +204,13 @@ sub allocate_chunk {
 	foreach my $freelist_index (0 .. $#{$self->{allocator_structure}{freelist}}) {
 		my $free_chunk = $self->{allocator_structure}{freelist}[$freelist_index];
 		if ($free_chunk->{size} >= $new_chunk_size) {
+			say "found suitable free chunk:", Dumper $free_chunk;
 			$self->remove_chunk_from_freelist($freelist_index);
+			$free_chunk = unshared_clone($free_chunk);
 
 			# check if we need to slice up a big chunk or return as-is
 			if ($free_chunk->{size} >= $new_chunk_size * 2) {
+				say "chopping chunk down to size";
 				my ($alloc_chunk, $chopped_chunk) = $self->chop_chunk($file_handle, $free_chunk, $new_chunk_size);
 				$self->add_free_chunk($chopped_chunk);
 
@@ -261,7 +266,9 @@ sub chunk_freelist_index {
 sub remove_chunk_from_freelist {
 	my ($self, $freelist_index) = @_;
 
-	splice @{$self->{allocator_structure}{freelist}}, $freelist_index, 1;
+	@{$self->{allocator_structure}{freelist}} =
+		map $self->{allocator_structure}{freelist}[$_], grep { $_ != $freelist_index } 0 .. $#{$self->{allocator_structure}{freelist}};
+	# splice @{$self->{allocator_structure}{freelist}}, $freelist_index, 1;
 	$self->write_allocator_structure;
 }
 
@@ -291,7 +298,7 @@ sub add_free_chunk {
 	my ($self, $chunk) = @_;
 
 	# add the new chunk to the freelist
-	unshift @{$self->{allocator_structure}{freelist}}, $chunk;
+	unshift @{$self->{allocator_structure}{freelist}}, shared_clone($chunk);
 	# pop a chunk from the freelist if there are too many
 	pop @{$self->{allocator_structure}{freelist}}
 		if @{$self->{allocator_structure}{freelist}} >= $self->{allocator_structure}{max_free_chunks};
@@ -323,4 +330,18 @@ sub free_chunk {
 	}
 }
 
+sub unshared_clone {
+	my ($data) = @_;
 
+	if (ref $data eq 'HASH') {
+		return { map { $_ => unshared_clone($data->{$_}) } keys %$data }
+	} elsif (ref $data eq 'ARRAY') {
+		return [ map unshared_clone($_), @$data ]
+	} else {
+		return $data
+	}
+}
+
+
+
+1;

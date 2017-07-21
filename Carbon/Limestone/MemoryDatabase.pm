@@ -91,7 +91,7 @@ sub unshared_clone {
 	my ($data) = @_;
 
 	if (ref $data eq 'HASH') {
-		return { map $_ => unshared_clone($data->{$_}), keys %$data }
+		return { map { $_ => unshared_clone($data->{$_}) } keys %$data }
 	} elsif (ref $data eq 'ARRAY') {
 		return [ map unshared_clone($_), @$data ]
 	} else {
