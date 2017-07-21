@@ -52,6 +52,9 @@ sub init_database_file {
 		max_free_chunks => 16,
 		freelist => [],
 		memory_size => 0,
+		bottom_chunk => {
+			size => 0,
+		},
 		top_chunk => {
 			size => 0,
 			offset => 0,
@@ -88,7 +91,7 @@ sub read_allocator_structure {
 sub write_allocator_structure {
 	my ($self) = @_;
 
-	say "wrote allocator_structure: ", Dumper $self->{allocator_structure};
+	# say "wrote allocator_structure: ", Dumper $self->{allocator_structure};
 	my $data = encode_json($self->{allocator_structure});
 	write_binary("$self->{collection_directory}/__allocator_structure.json", $data);
 }
@@ -200,6 +203,22 @@ sub allocate_chunk {
 
 	say "allocating new chunk of size $new_chunk_size";
 
+	# check bottom chunkto see if we can return a piece of it
+	my $bottom_chunk = $self->{allocator_structure}{bottom_chunk};
+	if ($bottom_chunk->{size} >= $new_chunk_size) {
+		# carve out the new chunk from the top of the bottom chunk
+		my %new_chunk;
+		$new_chunk{size} = $new_chunk_size;
+		$new_chunk{offset} = $bottom_chunk->{size} - $new_chunk_size;
+		$new_chunk{in_use} = 1;
+		$self->write_chunk($file_handle, \%new_chunk);
+
+		$bottom_chunk->{size} -= $new_chunk_size;
+		$self->write_allocator_structure;
+		return \%new_chunk
+	}
+
+
 	# check free chunks to see if we can return an existing chunk
 	foreach my $freelist_index (0 .. $#{$self->{allocator_structure}{freelist}}) {
 		my $free_chunk = $self->{allocator_structure}{freelist}[$freelist_index];
@@ -228,6 +247,8 @@ sub allocate_chunk {
 		}
 	}
 
+	# if there is no available free chunk,
+	# new chunk will come from top
 	my $top_chunk = $self->{allocator_structure}{top_chunk};
 	# expand memory until top chunk has enough to support the new chunk
 	while ($top_chunk->{size} < $new_chunk_size + $CHUNK_STRUCT_SIZE) {
@@ -238,15 +259,15 @@ sub allocate_chunk {
 	# carve out the new chunk from the top chunk
 	my $new_chunk_offset = $top_chunk->{offset};
 
-	$top_chunk->{size} -= $new_chunk_size;
-	$top_chunk->{offset} += $new_chunk_size;
-	$self->write_allocator_structure;
-
 	my %new_chunk;
 	$new_chunk{size} = $new_chunk_size;
 	$new_chunk{offset} = $new_chunk_offset;
 	$new_chunk{in_use} = 1;
 	$self->write_chunk($file_handle, \%new_chunk);
+
+	$top_chunk->{size} -= $new_chunk_size;
+	$top_chunk->{offset} += $new_chunk_size;
+	$self->write_allocator_structure;
 
 	return \%new_chunk
 }
@@ -300,8 +321,11 @@ sub add_free_chunk {
 	# add the new chunk to the freelist
 	unshift @{$self->{allocator_structure}{freelist}}, shared_clone($chunk);
 	# pop a chunk from the freelist if there are too many
-	pop @{$self->{allocator_structure}{freelist}}
-		if @{$self->{allocator_structure}{freelist}} >= $self->{allocator_structure}{max_free_chunks};
+	if (@{$self->{allocator_structure}{freelist}} >= $self->{allocator_structure}{max_free_chunks}) {
+		say "killing chunk:", Dumper $self->{allocator_structure}{freelist}[-1];
+		# this chunk is now pronounced dead and will only be reused if it is coalesced with an adjacent chunk
+		pop @{$self->{allocator_structure}{freelist}};
+	}
 
 	$self->write_allocator_structure;
 }
@@ -324,6 +348,10 @@ sub free_chunk {
 	if ($next_chunk->{is_top}) {
 		say "coalescing top chunk";
 		$self->coalesce_top_chunk($chunk);
+	} elsif ($chunk->{offset} == $self->{allocator_structure}{bottom_chunk}{size}) {
+		say "coalescing bottom chunk";
+		$self->{allocator_structure}{bottom_chunk}{size} += $chunk->{size};
+		$self->write_allocator_structure;
 	} else {
 		say "adding chunk to free list";
 		$self->add_free_chunk($chunk);
