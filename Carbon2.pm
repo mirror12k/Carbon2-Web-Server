@@ -17,7 +17,7 @@ use FreezeThaw qw/ freeze thaw /;
 use Carp;
 
 use Carbon::URI;
-use Carbon::AsyncProcessor;
+# use Carbon::AsyncProcessor;
 
 use Data::Dumper;
 
