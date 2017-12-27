@@ -164,7 +164,7 @@ sub start_thread_pool {
 		do => sub {
 			my ($gpc) = @_;
 			my @ret = eval { $self->do_processing_thread($gpc); };
-			$self->warn(1, "processing thread during do-operation: $@") if $@;
+			$self->warn(1, "processing thread died during do-operation: $@") if $@;
 
 			return @ret
 		},
@@ -335,16 +335,16 @@ sub connection_thread_loop {
 						my $socket = $self->scheduled_jobs->{$jobid};
 						delete $self->scheduled_jobs->{$jobid};
 						# $self->warn(1, ": got result from job $jobid"); # DEBUG JOBS
-						my ($async_commands, @results) = $self->processing_thread_pool->result($jobid);
+						my ($received_async_commands, @results) = $self->processing_thread_pool->result($jobid);
 
-						# queue up any scheduled async jobs that the gpc produced
-						foreach my $command (@$async_commands) {
-							my ($callback, $delay, @args) = @$command;
-							# $self->warn(1, "got async command: @$command");
-							# we need to restore the callback since passing around code refs is not allowed
-							$callback = \&{$callback};
-							$self->schedule_async_job($callback, $delay, @args);
-						}
+						# # queue up any scheduled async jobs that the gpc produced
+						# foreach my $command (@$async_commands) {
+						# 	my ($callback, $delay, @args) = @$command;
+						# 	# $self->warn(1, "got async command: @$command");
+						# 	# we need to restore the callback since passing around code refs is not allowed
+						# 	$callback = \&{$callback};
+						# 	# $self->schedule_async_job($callback, $delay, @args);
+						# }
 
 						# reclaim any socket whose job has completed
 						if (exists $self->active_connections->{"$socket"}) {
@@ -463,18 +463,19 @@ sub remove_connection {
 }
 
 # sub schedule_async_job {
-# 	my ($self, $job, $delay, @args) = @_;
+# 	my ($self, $callback, $delay, @args) = @_;
 
-# 	# in connection thread context, we just put it directly into the async_processor
-# 	if (defined $self->async_processor) {
-# 		if (defined $delay) {
-# 			$self->async_processor->schedule_delayed_job($job, $delay, @args);
-# 		} else {
-# 			$self->async_processor->schedule_job($job, 0, @args);
-# 		}
-# 	} else {
-# 		push @{$self->async_command_queue}, [$job, $delay, @args];
-# 	}
+# 	push @{$self->async_command_queue}, [$callback, $delay, @args];
+# 	# # in connection thread context, we just put it directly into the async_processor
+# 	# if (defined $self->async_processor) {
+# 	# 	if (defined $delay) {
+# 	# 		$self->async_processor->schedule_delayed_job($callback, $delay, @args);
+# 	# 	} else {
+# 	# 		$self->async_processor->schedule_job($callback, 0, @args);
+# 	# 	}
+# 	# } else {
+# 	# 	push @{$self->async_command_queue}, [$callback, $delay, @args];
+# 	# }
 # }
 
 sub schedule_gpc {
