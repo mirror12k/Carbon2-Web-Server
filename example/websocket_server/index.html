@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+	<title>Websocket Server Example</title>
+	<script type="text/javascript">
+		console.log('testing');
+		window.onload = function () {
+			var story_container = document.querySelector('#story_container');
+			var continue_story_button = document.querySelector('#continue_story_button');
+			console.log('loaded:', story_container, continue_story_button);
+
+			var socket = new WebSocket('ws://localhost:2047/story');
+
+			socket.addEventListener('open', function (event) {
+				console.log('websocket connected!');
+			});
+			socket.addEventListener('message', function (event) {
+				console.log('Message from server ', event.data);
+				var paragraph_node = document.createElement('p');
+				paragraph_node.innerHTML = event.data;
+				story_container.appendChild(paragraph_node);
+			});
+
+			continue_story_button.onclick = function (e) {
+				socket.send('story!');
+			};
+		};
+	</script>
+</head>
+<body>
+	<h1>my story:</h1>
+	<div id="story_container"></div>
+	<button id="continue_story_button">read more</button>
+</body>
+</html>

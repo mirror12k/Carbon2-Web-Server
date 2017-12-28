@@ -8,25 +8,34 @@ use lib '../..';
 
 use Carbon2;
 use Carbon::TCPReceiver;
+use Carbon::HTTP::Connection;
 use Carbon::WebSocket::HTTPPromoter;
 
 use Carbon::WebSocket::Processor;
+use Carbon::HTTP::FileServer;
 
 
 
 
 =pod
 
-an example websocket server which recieves websocket connections at ws://localhost:2048/ and responds with basic text responses
+an example websocket server which recieves websocket connections at ws://localhost:2049/ and responds with basic text responses
 
 =cut
 
 my $svr = Carbon2->new(
 	debug => 1,
 	receivers => [
-		Carbon::TCPReceiver->new(2048 => 'Carbon::WebSocket::HTTPPromoter'),
+		# an http server to serve our index page
+		Carbon::TCPReceiver->new(2048 => 'Carbon::HTTP::Connection'),
+		# a websocket server to receive and serve websocket connections from our index page
+		Carbon::TCPReceiver->new(2047 => 'Carbon::WebSocket::HTTPPromoter'),
 	],
 	processors => {
+		# http requests go to a file server
+		'http:' => Carbon::HTTP::FileServer->new
+			->route_directory('/' => '.', default_file => 'index.html'),
+		# websocket requests get handled here
 		'ws:' => Carbon::WebSocket::Processor->new(paths => {
 			'/' => {
 				text => sub {
