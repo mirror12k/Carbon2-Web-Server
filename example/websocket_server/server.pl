@@ -19,7 +19,7 @@ use Carbon::HTTP::FileServer;
 
 =pod
 
-an example websocket server which recieves websocket connections at ws://localhost:2049/ and responds with basic text responses
+an example websocket server which recieves websocket connections at ws://localhost:2047/ and responds with basic text responses
 
 =cut
 

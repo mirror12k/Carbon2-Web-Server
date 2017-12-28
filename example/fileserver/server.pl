@@ -24,7 +24,7 @@ my $svr = Carbon2->new(
 	],
 	processors => {
 		'http:' => Carbon::HTTP::FileServer->new
-			->route_directory('/' => '.'),
+			->route_directory('/' => shift // '.'),
 	},
 );
 

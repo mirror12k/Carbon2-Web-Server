@@ -10,7 +10,7 @@ use Gzip::Faster;
 use JSON;
 
 use Carbon::URI;
-use Carbon::Limestone::Query;
+# use Carbon::Limestone::Query;
 use Carbon::Limestone::Response;
 
 
@@ -78,7 +78,8 @@ sub format_gpc {
 
 	my $uri = Carbon::URI->parse($req->{path});
 	$uri->protocol('limestone:');
-	return { uri => $uri, data => Carbon::Limestone::Query->new(%{$req->{data}}) }
+	# return { uri => $uri, data => Carbon::Limestone::Query->new(%{$req->{data}}) }
+	return { uri => $uri, data => $req->{data} }
 }
 
 1;

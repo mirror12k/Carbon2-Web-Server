@@ -58,7 +58,16 @@ sub create {
 sub execute_query {
 	my ($self, $query) = @_;
 
+
+	return Carbon::Limestone::Response->new(status => 'error', error => 'missing argument "type"')
+			unless exists $query->{type};
+	return Carbon::Limestone::Response->new(status => 'error', error => 'missing argument "collection"')
+			unless exists $query->{collection};
+
 	if ($query->{type} eq 'push') {
+		return Carbon::Limestone::Response->new(status => 'error', error => 'missing argument "data"')
+				unless exists $query->{data};
+
 		return $self->lock_all_edits(sub {
 			$self->{collections}{$query->{collection}} //= shared_clone([]);
 
@@ -84,6 +93,8 @@ sub execute_query {
 		return Carbon::Limestone::Response->new(status => 'success',
 				data => scalar @{$self->{collections}{$query->{collection}}});
 
+	} else {
+		return Carbon::Limestone::Response->new(status => 'error', error => 'invalid argument "type"');
 	}
 }
 

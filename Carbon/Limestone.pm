@@ -22,6 +22,7 @@ use Carbon::Limestone::Response;
 
 use Carbon::Limestone::MemoryDatabase;
 use Carbon::Limestone::FileDatabase;
+use Carbon::Limestone::DocumentDatabase;
 
 
 
@@ -117,6 +118,8 @@ sub execute_gpc {
 	my $uri = $gpc->{uri};
 	my $req = $gpc->{data};
 
+	return Carbon::Limestone::Response->new(status => 'error', error => 'missing argument "method"')
+			unless exists $req->{method};
 	# $self->warn(1, "got request: ", Dumper $req);
 	$self->warn(1, "got $req->{method} request");
 	if ($req->{method} eq 'create') {
