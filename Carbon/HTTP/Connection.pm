@@ -76,7 +76,14 @@ sub on_result {
 		{ 'content-length' => [ length 'Not Found' ] },
 		'Not Found'
 	);
-	$self->write_to_output_buffer($response->as_string);
+	my $body = $response->content;
+	if (ref $body eq 'HASH' and exists $body->{filepath}) {
+		$response->content(undef);
+		$self->write_to_output_buffer($response->as_string);
+		$self->write_file_to_output_buffer($body->{filepath});
+	} else {
+		$self->write_to_output_buffer($response->as_string);
+	}
 	# $self->write_buffered($response->as_string);
 	# $self->{socket}->print($response->as_string);
 }

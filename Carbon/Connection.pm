@@ -4,6 +4,8 @@ use warnings;
 
 use feature 'say';
 
+use File::Slurper 'read_binary';
+
 
 
 sub new {
@@ -57,6 +59,12 @@ sub write_buffered {
 sub write_to_output_buffer {
 	my ($self, $text) = @_;
 	$self->{write_buffer} .= $text;
+}
+
+sub write_file_to_output_buffer {
+	my ($self, $filepath) = @_;
+	my $data = read_binary $filepath;
+	$self->{write_buffer} .= $data;
 }
 
 # required callback
