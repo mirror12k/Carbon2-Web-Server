@@ -4,7 +4,7 @@ use strict;
 use warnings;
 
 use feature 'say';
-use File::Slurper 'read_binary';
+# use File::Slurper 'read_binary';
 
 use Carbon::HTTP::MIME;
 use Carbon::HTTP::Response;

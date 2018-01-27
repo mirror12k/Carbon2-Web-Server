@@ -19,6 +19,9 @@ sub start_sockets {
 		Reuse => 1,
 		Blocking => 0,
 	);
+
+	die "failed to open tcp socket on port $self->{port}: $!" unless defined $self->{server_socket};
+
 	return $self->{server_socket}
 }
 

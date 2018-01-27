@@ -105,9 +105,11 @@ sub get_file {
 	my $res;
 	if (-e -f $filepath) {
 		$res = Carbon::HTTP::Response->new('200');
-		my $data = read_binary($filepath);
-		$res->content($data);
-		$res->header('content-length' => length $res->content);
+		# my $data = read_binary($filepath);
+		# $res->content($data);
+		$res->content({ filepath => $filepath });
+		# $res->header('content-length' => length $res->content);
+		$res->header('content-length' => -s $filepath);
 		$res->header('content-type' => $self->get_content_type($filepath));
 	} else {
 		$res = Carbon::HTTP::Response->new('404', 'Not Found');
