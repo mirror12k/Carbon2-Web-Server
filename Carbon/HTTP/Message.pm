@@ -6,7 +6,7 @@ use warnings;
 
 
 sub new {
-	my $class = shift;
+	my ($class) = @_;
 	my $self = bless {}, $class;
 	return $self
 }

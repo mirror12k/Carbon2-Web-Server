@@ -14,8 +14,7 @@ use Carbon::HTTP::Response;
 
 
 sub new {
-	my $class = shift;
-	my %args = @_;
+	my ($class, %args) = @_;
 	my $self = $class->SUPER::new(%args);
 
 	return $self

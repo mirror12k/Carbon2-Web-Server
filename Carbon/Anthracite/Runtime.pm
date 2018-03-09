@@ -5,7 +5,7 @@ use warnings;
 use feature 'say';
 
 use Carbon::HTTP::Response;
-
+use Carbon::HTTP::Util;
 
 
 sub new {
@@ -23,7 +23,15 @@ sub new {
 	if (defined $self->request) { # stuff like pre-includes don't have an associated request
 		$self->query_form($self->request->uri->query_form);
 		if (defined $self->request->header('content-type') and $self->request->header('content-type') eq 'application/x-www-form-urlencoded') {
-			$self->post_form({ map { ($_->[0] // '') => ($_->[1] // '') } map [split('=', $_, 2)], split '&', $self->request->content });
+			$self->post_form(parse_urlencoded_form($self->request->content));
+			# { map { ($_->[0] // '') => ($_->[1] // '') } map [split('=', $_, 2)], split '&', $self->request->content }
+		} elsif (defined $self->request->header('content-type') and $self->request->header('content-type') =~ /\bmultipart\/form-data; boundary=(.*)/) {
+			my $boundary = $1;
+			# say "debug content length:", $self->request->header('content-length');
+			$self->post_form(parse_multipart_form($self->request->content, "--$boundary"));
+			# say "processed post form";
+		} elsif (defined $self->request->header('content-type') and $self->request->header('content-type') eq 'application/json') {
+			$self->post_form(parse_json_form($self->request->content));
 		}
 	}
 

@@ -13,8 +13,7 @@ use Carbon::Graphite::Template;
 
 
 sub new {
-	my $class = shift;
-	my %args = @_;
+	my ($class, %args) = @_;
 	my $self = bless {}, $class;
 
 	$self->templates({});

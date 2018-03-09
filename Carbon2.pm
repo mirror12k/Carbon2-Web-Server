@@ -462,6 +462,11 @@ sub remove_connection {
 	delete $self->active_connections->{"$connection_socket"};
 }
 
+sub mark_connection_writable {
+	my ($self, $connection) = @_;
+	$self->connection_writable_selector->add($connection->{socket});
+}
+
 # sub schedule_async_job {
 # 	my ($self, $callback, $delay, @args) = @_;
 
