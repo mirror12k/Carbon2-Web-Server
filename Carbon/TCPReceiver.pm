@@ -35,7 +35,7 @@ sub restore_socket {
 # returns a connection object spawned from the given socket
 sub start_connection {
 	my ($self, $server, $socket) = @_;
-	return $self->{connection_class}->new($server, $socket)
+	return $self->{connection_class}->new($server, $socket, %{$self->{connection_args}});
 }
 
 sub shutdown {

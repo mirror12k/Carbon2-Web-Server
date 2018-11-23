@@ -9,11 +9,13 @@ use Carp;
 
 
 sub new {
-	my ($class, $port, $connection_class) = @_;
+	my ($class, $port, $connection_class, %args) = @_;
 	my $self = bless {}, $class;
 
 	$self->{port} = $port // croak "port required";
 	$self->{connection_class} = $connection_class // croak "connection class required";
+	
+	$self->{connection_args} = $args{connection_args} // {};
 
 	return $self
 }

@@ -37,11 +37,13 @@ sub on_data {
 		my $req = $self->{http_request};
 
 		if (defined $req->header('content-length')) { # if it has a content-length
+			# say "debug content-length: ", length $self->{buffer}, " of ", int $req->header('content-length');
+
 			# check if the whole body has arrived yet
-			if ($self->{http_request}->header('content-length') <= length $self->{buffer}) {
+			if ($req->header('content-length') <= length $self->{buffer}) {
 				# set the request content
-				$req->content(substr $self->{buffer}, 0, $self->{http_request}->header('content-length'));
-				$self->{buffer} = substr $self->{buffer}, $self->{http_request}->header('content-length');
+				$req->content(substr $self->{buffer}, 0, $req->header('content-length'));
+				$self->{buffer} = substr $self->{buffer}, $req->header('content-length');
 
 				# start the job
 				# say "debug got request: ", $req->as_string;

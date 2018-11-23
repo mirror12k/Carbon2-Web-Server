@@ -14,7 +14,7 @@ use IO::Socket::SSL;
 
 sub new {
 	my ($class, $port, $connection_class, %args) = @_;
-	my $self = $class->SUPER::new($port, $connection_class);
+	my $self = $class->SUPER::new($port, $connection_class, %args);
 
 	$self->{ssl_certificate} = $args{ssl_certificate} // confess 'ssl_certificate argument required';
 	$self->{ssl_key} = $args{ssl_key} // confess 'ssl_key argument required';
