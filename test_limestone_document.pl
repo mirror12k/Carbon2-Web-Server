@@ -38,25 +38,25 @@ my $handle = $collection->open_database_file;
 
 
 
-# fuzzing routine to test the robustness of the system by repeatedly allocating and deallocating thousands of blocks
-my @blocks;
+# # fuzzing routine to test the robustness of the system by repeatedly allocating and deallocating thousands of blocks
+# my @blocks;
 
-foreach (0 .. 4096) {
-	if (0 == int rand 2) {
-		my $size = 1 + int rand 1000;
-		my $block = $collection->allocate_chunk($handle, $size);
-		say "allocated $size block [$block->{offset}:$block->{size}]";
-		push @blocks, $block;
-	} else {
-		next unless @blocks;
-		my $index = int rand @blocks;
-		my ($block) = splice @blocks, $index, 1;
-		say "freeing block [$block->{offset}:$block->{size}]";
-		$collection->free_chunk($handle, $block);
-	}
-}
+# foreach (0 .. 4096) {
+# 	if (0 == int rand 2) {
+# 		my $size = 1 + int rand 1000;
+# 		my $block = $collection->allocate_chunk($handle, $size);
+# 		say "allocated $size block [$block->{offset}:$block->{size}]";
+# 		push @blocks, $block;
+# 	} else {
+# 		next unless @blocks;
+# 		my $index = int rand @blocks;
+# 		my ($block) = splice @blocks, $index, 1;
+# 		say "freeing block [$block->{offset}:$block->{size}]";
+# 		$collection->free_chunk($handle, $block);
+# 	}
+# }
 
-$collection->free_chunk($handle, $_) foreach @blocks;
+# $collection->free_chunk($handle, $_) foreach @blocks;
 
-say "ending allocator_structure:", Dumper $collection->{allocator_structure};
+# say "ending allocator_structure:", Dumper $collection->{allocator_structure};
 

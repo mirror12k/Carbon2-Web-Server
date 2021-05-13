@@ -17,7 +17,6 @@ sub route_json {
 
 	return $self->route(qr/$path.*/ => sub {
 		my ($self, $req) = @_;
-		say "debug content: ", $req->content;
 		my $json_res = $callback->($self, decode_json($req->content), $req);
 
 		my $res = Carbon::HTTP::Response->new('200', 'OK');

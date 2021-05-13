@@ -6,6 +6,7 @@ use feature 'say';
 
 use threads;
 use threads::shared;
+use Thread::Semaphore;
 
 use File::Path qw/ make_path remove_tree /;
 use File::Slurper qw/ read_binary write_binary read_dir /;
@@ -32,14 +33,19 @@ our $DEFAULT_MEMORY_EXPANSION_AMOUNT = 1024 * 64;
 sub new {
 	my ($class, %args) = @_;
 	my $self = bless {}, $class;
+	$self = shared_clone($self);
 
 	$self->{collection_directory} = $args{collection_directory} // die "collection_directory argument required";
+	$self->{allocator_lock} = shared_clone({});
+	$self->{database_access_lock} = shared_clone({});
+	$self->{database_semaphor} = Thread::Semaphore->new;
 
 	if ($args{initialize}) {
 		make_path($self->{collection_directory});
 		$self->init_database_file;
 	} else {
 		$self->read_allocator_structure;
+		$self->read_document_manager_structure;
 	}
 
 	return $self
@@ -63,19 +69,29 @@ sub init_database_file {
 		},
 	});
 
-	my $file_handle = IO::File->new("$self->{collection_directory}/__database_file", 'w');
-	die "failed to create database collection file: '$self->{collection_directory}/__database_file': $!"
+	my $file_handle = IO::File->new("$self->{collection_directory}/__collection_database", 'w');
+	die "failed to create database collection file: '$self->{collection_directory}/__collection_database': $!"
 			unless defined $file_handle;
 
 	$self->expand_database_memory($file_handle, $DEFAULT_MEMORY_EXPANSION_AMOUNT);
+
+	my $document_list = $self->alloc($file_handle, 8 * 512);
+	$self->{document_manager_structure} = shared_clone({
+		document_list => $document_list,
+		document_list_size => 512,
+		document_list_offset => 0,
+	});
+
+	$self->write_document_manager_structure;
+
 	$file_handle->close;
 }
 
 sub open_database_file {
 	my ($self) = @_;
 
-	my $file_handle = IO::File->new("$self->{collection_directory}/__database_file", 'r+');
-	die "failed to open database collection file: '$self->{collection_directory}/__database_file': $!"
+	my $file_handle = IO::File->new("$self->{collection_directory}/__collection_database", 'r+');
+	die "failed to open database collection file: '$self->{collection_directory}/__collection_database': $!"
 			unless defined $file_handle;
 	return $file_handle
 }
@@ -94,6 +110,22 @@ sub write_allocator_structure {
 	# say "wrote allocator_structure: ", Dumper $self->{allocator_structure};
 	my $data = encode_json($self->{allocator_structure});
 	write_binary("$self->{collection_directory}/__allocator_structure.json", $data);
+}
+
+sub read_document_manager_structure {
+	my ($self) = @_;
+
+	my $data = read_binary("$self->{collection_directory}/__document_manager_structure.json");
+	$self->{document_manager_structure} = shared_clone(decode_json($data));
+	say "read document_manager_structure: ", Dumper $self->{document_manager_structure};
+}
+
+sub write_document_manager_structure {
+	my ($self) = @_;
+
+	# say "wrote document_manager_structure: ", Dumper $self->{document_manager_structure};
+	my $data = encode_json($self->{document_manager_structure});
+	write_binary("$self->{collection_directory}/__document_manager_structure.json", $data);
 }
 
 
@@ -136,7 +168,7 @@ sub read_next_chunk {
 sub read_chunk_data {
 	my ($self, $file_handle, $chunk) = @_;
 
-	my $data_size = $chunk->{size} - 4;
+	my $data_size = $chunk->{size} - $CHUNK_STRUCT_SIZE;
 	my $data = '';
 	$file_handle->seek($chunk->{offset}, SEEK_SET);
 	while (length($data) < $data_size) {
@@ -358,6 +390,7 @@ sub free_chunk {
 	}
 }
 
+
 sub unshared_clone {
 	my ($data) = @_;
 
@@ -369,6 +402,58 @@ sub unshared_clone {
 		return $data
 	}
 }
+
+sub lock_allocator {
+	my ($self, $callback) = @_;
+	my $allocator_lock = $self->{allocator_lock};
+	lock($allocator_lock);
+	return $callback->();
+}
+
+# base allocator api
+
+# reads chunk data at the specific offset
+sub read_data {
+	my ($self, $file_handle, $offset) = @_;
+	my $chunk = $self->read_chunk($file_handle, $offset);
+	return $self->read_chunk_data($file_handle, $chunk);
+}
+
+# writes chunk data at the specific offset
+sub write_data {
+	my ($self, $file_handle, $offset, $data) = @_;
+	my $chunk = $self->read_chunk($file_handle, $offset);
+	return $self->write_chunk_data($file_handle, $chunk, $data);
+}
+
+# allocates a chunk of given size and returns its offset
+sub alloc {
+	my ($self, $file_handle, $size) = @_;
+
+	return $self->lock_allocator(sub {
+		my $chunk = $self->allocate_chunk($file_handle, $size);
+		return $chunk->{offset}
+	})
+}
+
+# frees the chunk at the given offset
+sub free {
+	my ($self, $file_handle, $offset) = @_;
+
+	my $chunk = $self->read_chunk($file_handle, $offset);
+	return $self->lock_allocator(sub {
+		$self->free_chunk($file_handle, $chunk);
+	})
+}
+
+
+# sub read_document_list {
+# 	my ($self, $file_handle) = @_;
+
+# 	my $
+# }
+
+
 
 
 
